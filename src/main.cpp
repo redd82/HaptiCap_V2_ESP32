@@ -66,7 +66,7 @@ struct CalData {
   float accelScaleZ = 1.0;
 };
 
-Config config;                         // <- global configuration object 
+Config config;                         // <- global configuration object
 CalData caldata;
 
 char filename[15] = "/HaptiCap.json";
