@@ -69,8 +69,8 @@ struct CalData {
 Config config;                         // <- global configuration object 
 CalData caldata;
 
-char filename[14] = "HaptiCap.json";
-char filename_cal[13] = "Caldata.json";
+char filename[15] = "/HaptiCap.json";
+char filename_cal[14] = "/Caldata.json";
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
@@ -997,50 +997,61 @@ void setup(){
 
 
 // Webserver setup responses
-  
-  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/areamap.html", String(), false, processor);
+    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/index.html", String(), false, processor);
   timerRestart(timer2);
   if(config.debug2Serial){
-    Serial.println("areamap called");
+    Serial.println("index called");
   }
 });
 
-  webServer.on("/areamap.html", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/areamap.html", String(), false, processor);
-  timerRestart(timer2);
-  if(config.debug2Serial){
-    Serial.println("areamap called");
-  }
+  webServer.on("/main.9a48308e.css", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/main.9a48308e.css", "text/css");
 });
 
-  webServer.on("/areamap_test.html", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/areamap_test.html", String(), false, processor);
-  timerRestart(timer2);
-  if(config.debug2Serial){  
-    Serial.println("areamap called");
-  }
+  webServer.on("/main.9a48308e.css", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/main.9a48308e.css", "text/css");
 });
 
-  webServer.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/style.css", "text/css");
+  webServer.on("/main.9116520d.js", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/main.9116520d.js", "application/javascript");
 });
 
-  webServer.on("/map.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map.jpg", "image/jpeg");
+  webServer.on("/main.9116520d.js.map", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/main.9116520d.js.map", "text/css");
 });
 
-  webServer.on("/map_test.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map_test.jpg", "image/jpeg");
+
+  webServer.on("/map1.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/map1.jpg", "image/jpeg");
 });
 
-  webServer.on("/manifest.txt", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/manifest.txt", "text/css");  
+  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
+});
+
+  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
+});
+
+  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
+});
+
+  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
+});
+
+  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
+});
+
+  webServer.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *request){
+  request->send(SPIFFS, "/manifest.json", "application/json");  
 });
 
 // Send a GET request to <ESP_IP>/get?input1=<inputMessage> set.html?lat=123.456&lon=78.90  setlatlong?lat=123.456&lon=78.90
 webServer.on("/setlatlon", HTTP_GET, [] (AsyncWebServerRequest *request){
-    // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
     if (request->hasParam(PARAM_LAT)) {
       inputLat = request->getParam(PARAM_LAT)->value();
       inputLon = request->getParam(PARAM_LON)->value();
@@ -1067,7 +1078,6 @@ webServer.on("/setlatlon", HTTP_GET, [] (AsyncWebServerRequest *request){
   });
 
 webServer.on("/setlatlon_home", HTTP_GET, [] (AsyncWebServerRequest *request){
-    // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
     flCurrentLat = gps.location.lat();
     flCurrentLon = gps.location.lng();
     config.HOME_LAT = flCurrentLat;
@@ -1087,7 +1097,6 @@ webServer.on("/setlatlon_home", HTTP_GET, [] (AsyncWebServerRequest *request){
   });    
 
 webServer.on("/setlatlon_home_test", HTTP_GET, [] (AsyncWebServerRequest *request){
-    // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
     flCurrentLat = gps.location.lat();
     flCurrentLon = gps.location.lng();
     config.HOME_LAT = flCurrentLat;
@@ -1107,7 +1116,6 @@ webServer.on("/setlatlon_home_test", HTTP_GET, [] (AsyncWebServerRequest *reques
   });  
     
 webServer.on("/setlatlon_test", HTTP_GET, [] (AsyncWebServerRequest *request){
-    // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
     if (request->hasParam(PARAM_LAT)) {
       inputLat = request->getParam(PARAM_LAT)->value();
       inputLon = request->getParam(PARAM_LON)->value();
