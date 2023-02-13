@@ -8,24 +8,35 @@
 #include <ArduinoJson.h>
 #include <MPU9250_WE.h>
 #include <Wire.h>
+#include <string>
+
+#include "functions.h"
 
 #define SWVERSION 2.001
 #define MPU9250_ADDR 0x68
 #define MAX_SRV_CLIENTS 2
 #define INPUT_SIZE 20
-#define Threshold 10                                        /* Greater the value, the higher the sensitivity */
+#define CONFIG_JSON_DOCSIZE 860
+#define CALDATA_JSON_DOCSIZE 700
+
+void setup();
+void setupIO();
+void webServerFunctions();
+void loop();
 
 // Set declination angle on your location and fix heading
 // Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
 //float declinationAngle = (declAngleDeg + (declAngleMin / 60.0)) / (180.0 / PI);
-
+// _Config_
 struct Config {
-  uint32_t http_port = 80;
+  uint8_t http_port = 80;
   bool asAP = 0;
   char clientSSID[16] = "TrizNet_AP2";
   char clientPasswd[16] = "T0sh7b49";
-  char deviceName[24] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
-  char apPasswd[24] = "prutser00";
+  char deviceName[16] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
+  char apPasswd[16] = "prutser00";
+  char http_username[16] = "admin";
+  char http_password[16] = "admin";
   unsigned long gpsPollSec = 1;               // Timer0 tick set to 1 s (10 * 1000 = 10000 ms) for gps 
   unsigned long compPollMs = 100;            // Timer1 tick set to 1 ms (250 * 1 = 250 ms)  for compass 
   float compOffset = 123.0;
@@ -48,6 +59,7 @@ struct Config {
   bool ftpEnabled = 0;
 };
 
+// _CalData_
 struct CalData {
   float magBiasX = 0.0;
   float magBiasY = 0.0;
@@ -69,8 +81,13 @@ struct CalData {
 Config config;                         // <- global configuration object
 CalData caldata;
 
-char filename[15] = "/HaptiCap.json";
-char filename_cal[14] = "/Caldata.json";
+// _PARAMS_
+const char* filename = "/hapticap.json";
+const char* filename_cal = "/caldata.json";
+String fileJs = "/";
+String fileJsMap = "/";
+String fileCss = "/";
+String fileCssMap = "/";
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
@@ -111,10 +128,13 @@ const char* cardinalCompHeading;
 const char* cardinalToWaypoint;
 const char* cardinal2home;
 
+// _Interrupts_
 int interrupt0;
 int interrupt1;
 int interrupt2;
 int totalInterruptCounter;
+
+// _Timers_
 hw_timer_t *timer0 = NULL;
 hw_timer_t *timer1 = NULL;
 hw_timer_t *timer2 = NULL;
@@ -181,7 +201,8 @@ unsigned long distance2home = 0;
 float relheading2home = 0;
 float coarse2home = 0;
 int nrsatt = 0;
-float b = (255.0/90.0);   // 256/90 pwm scaled to degrees
+float b = (255.0/90.0);   // 256/90 pwm scaled to 90 degrees (quadrant)
+
 String GPSTime;
 int hours;
 int mins;
@@ -229,7 +250,6 @@ void IRAM_ATTR onTimer2(){
 // Make sensor and server objects
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
-// Adafruit_HMC5883_Unified compass = Adafruit_HMC5883_Unified(12345);
 MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
 WiFiServer TelNetserver(23);
 WiFiClient serverClients[MAX_SRV_CLIENTS];
@@ -243,7 +263,6 @@ if (magneticVariation.isUpdated())
     Serial.println(magneticVariation.value());
   }
 */
-
 
 static void smartDelay(unsigned long ms){
   unsigned long start = millis();
@@ -286,10 +305,17 @@ void getInitialReadings(){
   nrsatt = gps.satellites.value();
 }
 
-// Set LED GPIO
-const int ledPin = 4;
-// Stores LED state
-String ledState;
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+  if(!index){
+    Serial.printf("UploadStart: %s\n", filename.c_str());
+  }
+  for(size_t i=0; i<len; i++){
+    Serial.write(data[i]);
+  }
+  if(final){
+    Serial.printf("UploadEnd: %s, %u B\n", filename.c_str(), index+len);
+  }
+}
 
 // Replaces placeholder with value
 void notFound(AsyncWebServerRequest *request) {
@@ -297,212 +323,20 @@ void notFound(AsyncWebServerRequest *request) {
 }
 
 String processor(const String& var){
-    if(var == "WPLATLON"){
-          str2HTML = String(config.WAYPOINT_LAT,6) + " " + String(config.WAYPOINT_LON,6);
+    if(var == "JSFILE"){
+          str2HTML = fileJs;
           return str2HTML;
-     }else if (var == "GPSTIME"){
-          str2HTML = GPSTime;
-          return str2HTML;            
-     }else if (var == "CURRENTPOSLATLON"){
-          str2HTML = String(flCurrentLat,6) + " " + String(flCurrentLon,6);
-          return str2HTML;
-     }else if (var == "DIST2WP"){
-          str2HTML = String(distancewaypoint);
-          return str2HTML;
-     }else if (var == "WPDIRECTION"){
-          str2HTML = String(cardinalToWaypoint);
-          return str2HTML;
-     }else if (var == "WPBEARING"){
-          str2HTML = String(coarsewaypoint);
-          return str2HTML;
-     }else if (var == "DEGCOMPASS"){
-          str2HTML = String(compassheading);
-          return str2HTML;
-     }else if (var == "CARDCOMPASS"){
-          str2HTML = String(cardinalCompHeading);
-          return str2HTML;
-     }else if (var == "OFFSETCOMPASS"){
-          str2HTML = String(config.compOffset);
-          return str2HTML;
-     }else if (var == "DECLANGLERAD"){
-          str2HTML = String(config.declAngleRad,12);
-          return str2HTML;          
-     }else if (var == "POLLTIMECOMPASS"){
-          str2HTML = String(config.compPollMs);
-          return str2HTML;      
-     }else if (var == "POLLTIMEGPS"){
-          str2HTML = String(config.gpsPollSec);
-          return str2HTML;                 
-     }else if (var == "SERIALCHECK"){
-        if(config.debug2Serial){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";
-        }
-        return str2HTML;
+     }else if (var == "CSSFILE"){
+          str2HTML = fileCss;
+          return str2HTML; 
      }
-     /*else if (var == "MPUCHECK"){
-        if(config.Debug4MPU){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";
-        }
-        return str2HTML;        
-     }
-     */else if (var == "DATASERIALCHECK"){
-        if(config.debugData2Serial){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";  
-        }
-        return str2HTML;                
-     }else if (var == "TELNETCHECK"){
-        if(config.debug2Telnet){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";  
-        }
-        return str2HTML;
-     }else if (var == "HAPTICCHECK"){
-        if(config.debugHaptic){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";  
-        }
-        return str2HTML;
-     }else if (var == "APCHECK"){
-        if(config.asAP){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";
-        }
-        return str2HTML;
-     }else if (var == "TOUCHCHECK"){
-        if(config.touchEnabled){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";
-        }
-        return str2HTML;
-     }else if (var == "FTPCHECK"){
-        if(config.ftpEnabled){
-          str2HTML = " checked ";
-        }else{
-          str2HTML = "";
-        }
-        return str2HTML;                                 
-     }else if (var == "NRSAT"){
-        if (nrsatt < 4){
-          str2HTML = String(nrsatt) + " NF";
-        }else{
-          str2HTML = String(nrsatt) + " satellites";
-        }
-        return str2HTML;
-     }else if (var == "STATION"){
-          str2HTML = config.clientSSID;
-          return str2HTML;
-     }else if (var == "PASSWDWIFI"){
-          str2HTML = "**********";
-          return str2HTML;          
-     }else if (var == "MDNSNAME"){
-          str2HTML = String(config.deviceName);
-          return str2HTML;
-     }else if (var == "AP_PASSWD"){
-          str2HTML = String(config.apPasswd);
-          return str2HTML; 
-     }else if (var == "SLEEPTIME"){
-          str2HTML = String(config.sleepMins);
-          return str2HTML; 
-     }else if (var == "TOUCHTHRESHOLD"){
-          str2HTML = String(config.touchThreshold);
-          return str2HTML;
-     }else if (var == "HOME_LAT"){
-          str2HTML = String(config.HOME_LAT,6);
-          return str2HTML;
-     }else if (var == "HOME_LON"){
-          str2HTML = String(config.HOME_LON,6);
-          return str2HTML;
-     }else if (var == "HOMEBEARING"){
-          str2HTML = String(coarse2home);
-          return str2HTML;          
-     }else if (var == "DIST2HOME"){
-          str2HTML = String(distance2home);
-          return str2HTML;
-     }else if (var == "HOMEDIRECTION"){
-          str2HTML = String(cardinal2home);
-          return str2HTML;
-     }else if (var == "TARGETREACHED"){
-          str2HTML = String(config.targetReached);
-          return str2HTML;
-     }else if (var == "MANUALLAT"){
-          str2HTML = String(config.WAYPOINT_LAT,6);
-          return str2HTML;
-     }else if (var == "MANUALLON"){
-          str2HTML = String(config.WAYPOINT_LON,6);
-          return str2HTML;                              
-     }else if (var == "MAXDISTANCEHAPTIC"){
-          str2HTML = String(config.maxDistance);
-          return str2HTML;          
-     }else if (var == "MAXDELAYHAPTIC"){
-          str2HTML = String(config.maxDelay);
-          return str2HTML;          
-     }    
-     /*
-     else if (var == "CALDATAMAGBIASX"){
-          str2HTML = String(caldata.MagBiasX);
-          return str2HTML;
-     }else if (var == "CALDATAMAGBIASY"){
-          str2HTML = String(caldata.MagBiasY);
-          return str2HTML; 
-     }else if (var == "CALDATAMAGBIASZ"){
-          str2HTML = String(caldata.MagBiasZ);
-          return str2HTML;
-     }else if (var == "CALDATAMAGSCALEX"){
-          str2HTML = String(caldata.MagScaleFacX);
-          return str2HTML; 
-     }else if (var == "CALDATAMAGSCALEY"){
-          str2HTML = String(caldata.MagScaleFacY);
-          return str2HTML; 
-     }else if (var == "CALDATAMAGSCALEZ"){
-          str2HTML = String(caldata.MagScaleFacZ);
-          return str2HTML;
-     }else if (var == "CALDATAGYROBIASX"){
-          str2HTML = String(caldata.GyroBiasX);
-          return str2HTML;
-     }else if (var == "CALDATAGYROBIASY"){
-          str2HTML = String(caldata.GyroBiasY);
-          return str2HTML;  
-     }else if (var == "CALDATAGYROBIASZ"){
-          str2HTML = String(caldata.GyroBiasZ);
-          return str2HTML;
-     }else if (var == "CALDATAACCELBIASX"){
-          str2HTML = String(caldata.AccelBiasX);
-          return str2HTML;
-     }else if (var == "CALDATAACCELBIASY"){
-          str2HTML = String(caldata.AccelBiasY);
-          return str2HTML; 
-     }else if (var == "CALDATAACCELBIASZ"){
-          str2HTML = String(caldata.AccelBiasZ);
-          return str2HTML;
-     }else if (var == "CALDATAACCELSCALEX"){
-          str2HTML = String(caldata.AccelScaleX);
-          return str2HTML; 
-     }else if (var == "CALDATAACCELSCALEY"){
-          str2HTML = String(caldata.AccelScaleY);
-          return str2HTML; 
-     }else if (var == "CALDATAACCELSCALEZ"){
-          str2HTML = String(caldata.AccelScaleZ);
-          return str2HTML;                      
-     }else if (var == "TEMPERATURE"){
-          str2HTML = String(flTemperature);
-          return str2HTML;                                  
-     }
-     */                    
     return String();
 }
 
- 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    int fileCounter = 0;
+    String fileName = "";
+
     Serial.printf("Listing directory: %s\r\n", dirname);
 
     File root = fs.open(dirname);
@@ -525,7 +359,24 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
             }
         } else {
             Serial.print("  FILE: ");
-            Serial.print(file.name());
+            fileName = file.name();
+            if(fileName.startsWith("main.")){
+                if(fileName.endsWith(".js")){
+                  fileJs.concat(file.name());
+                  Serial.print(fileJs);
+                } else if (fileName.endsWith(".js.map")){
+                  fileJsMap.concat(file.name());
+                  Serial.print(fileJsMap);
+                } else if (fileName.endsWith(".css")){
+                  fileCss.concat(file.name());
+                  Serial.print(fileCss);
+                } else if (fileName.endsWith(".css.map")){
+                  fileCssMap.concat(file.name());
+                  Serial.print(fileCssMap);
+                }
+            }else {
+              Serial.print(file.name());
+            }
             Serial.print("\tSIZE: ");
             Serial.println(file.size());
         }
@@ -533,57 +384,140 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     }
 }
 
-// Saves the configuration to a file
-void saveConfiguration(const char *filename, const Config &config) {
-  SPIFFS.remove(filename);
-  File file = SPIFFS.open(filename, FILE_WRITE);
+void printFile(fs::FS &fs, const char * path) {
+  // Open file for reading
+  File file = fs.open(path);
   if (!file) {
-    Serial.println(F("Failed to create file"));
+    Serial.println(F("Failed to read file"));
     return;
   }
-  StaticJsonDocument<860> doc;
-  // Set the values in the document
-  doc["As_AP"] = String(config.asAP);
-  doc["Client_SSID"] = config.clientSSID;
-  doc["Client_Passwd"] = config.clientPasswd;
-  doc["DeviceName"] = config.deviceName;
-  doc["AP_Passwd"] = config.apPasswd;
-  doc["GPS_poll_sec"] = String(config.gpsPollSec);
-  doc["GPS_target_reached_m"] = String(config.targetReached);  
-  doc["Comp_poll_ms"] = String(config.compPollMs);
-  doc["Comp_offset"] = String(config.compOffset);
-  doc["Home_lat"] = String(config.HOME_LAT,6);
-  doc["Home_lon"] = String(config.HOME_LON,6);
-  doc["WP_lat"] = String(config.WAYPOINT_LAT,6);
-  doc["WP_lon"] = String(config.WAYPOINT_LON,6);  
-  doc["DeclAngleRad"] = String(config.declAngleRad,14);
-  doc["Sleep_mins"] = String(config.sleepMins);
-  doc["Touch_Threshold"] = String(config.touchThreshold);
-  doc["TouchEnabled"] = String(config.touchEnabled);
-  doc["DebugHaptic"] = String(config.debugHaptic);
-  doc["Hapticmaxdistance_m"] = String(config.maxDistance);
-  doc["Hapticmaxdelay_ms"] = String(config.maxDelay);
-  doc["TimezoneOffset"] = String(config.timeZoneOffset);
-  doc["Debug2Serial"] = String(config.debug2Serial);
-  doc["DebugData2Serial"] = String(config.debugData2Serial);  
-  doc["Debug2Telnet"] = String(config.debug2Telnet);
-  doc["FTPEnabled"] = String(config.ftpEnabled);
+  while (file.available()) {
+    Serial.print((char)file.read());
+  }
+  Serial.println();
+  file.close();
+}
+
+String readFile(fs::FS &fs, const char * path){
+  File file = fs.open(path);
+  if(!file || file.isDirectory()){
+    Serial.println("- empty file or failed to open file");
+    return String();
+  }
+  //Serial.println("- read from file:");
+  String fileContent;
+  while(file.available()){
+    fileContent+=String((char)file.read());
+  }
+  //Serial.println(fileContent);
+  return fileContent;
+}
+
+void deleteFile(fs::FS &fs, const char * path){
+    Serial.printf("Deleting file: %s\n", path);
+    if(fs.remove(path)){
+        Serial.println("File deleted");
+    } else {
+        Serial.println("Delete failed");
+    }
+}
+
+// Saves the configuration to a file
+void saveConfiguration(fs::FS &fs, const char * path, const Config &config) {
+  deleteFile(SPIFFS, path);
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.println(F("Failed to open file for writing."));
+    return;
+  }
+  StaticJsonDocument<CONFIG_JSON_DOCSIZE> doc;
+  doc["asAP"] = String(config.asAP);
+  doc["clientSSID"] = config.clientSSID;
+  doc["clientPasswd"] = config.clientPasswd;
+  doc["deviceName"] = config.deviceName;
+  doc["apPasswd"] = config.apPasswd;
+  doc["gpsPollSec"] = String(config.gpsPollSec);
+  doc["targetReached"] = String(config.targetReached);  
+  doc["compPollMs"] = String(config.compPollMs);
+  doc["compOffset"] = String(config.compOffset);
+  doc["HOME_LAT"] = String(config.HOME_LAT,6);
+  doc["HOME_LON"] = String(config.HOME_LON,6);
+  doc["WAYPOINT_LAT"] = String(config.WAYPOINT_LAT,6);
+  doc["WAYPOINT_LON"] = String(config.WAYPOINT_LON,6);  
+  doc["declAngleRad"] = String(config.declAngleRad,14);
+  doc["sleepMins"] = String(config.sleepMins);
+  doc["touchThreshold"] = String(config.touchThreshold);
+  doc["touchEnabled"] = String(config.touchEnabled);
+  doc["debugHaptic"] = String(config.debugHaptic);
+  doc["maxDistance"] = String(config.maxDistance);
+  doc["maxDelay"] = String(config.maxDelay);
+  doc["timeZoneOffset"] = String(config.timeZoneOffset);
+  doc["debug2Serial"] = String(config.debug2Serial);
+  doc["debugData2Serial"] = String(config.debugData2Serial);  
+  doc["debug2Telnet"] = String(config.debug2Telnet);
+  doc["ftpEnabled"] = String(config.ftpEnabled);
   if (serializeJson(doc, file) == 0) {
     Serial.println(F("Failed to write to file"));
   }
   file.close();
 }
 
+void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
+  Serial.println(F("Loading configuration..."));
+  Serial.println(path);
+  File file = fs.open(path, FILE_READ);
+  delay(100);
+  StaticJsonDocument<CONFIG_JSON_DOCSIZE> doc;
+  DeserializationError error = deserializeJson(doc, file);
+  if (error){
+    Serial.println(F("Failed to read file, using default configuration"));
+    Serial.println(error.c_str());
+    saveConfiguration(SPIFFS, filename, config);
+  }else{
+
+  config.asAP = doc["asAP"].as<int>();
+  String tempClientSSID = doc["clientSSID"];
+  tempClientSSID.toCharArray(config.clientSSID, 16);
+  String tempClientPasswd = doc["clientPasswd"];
+  tempClientPasswd.toCharArray(config.clientPasswd, 16);
+  String tempDeviceName = doc["deviceName"];
+  tempDeviceName.toCharArray(config.deviceName, 16);
+  String tempApPasswd = doc["apPasswd"];
+  tempApPasswd.toCharArray(config.apPasswd, 16);
+  config.gpsPollSec = doc["gpsPollSec"].as<float>();
+  config.targetReached = doc["gpsTargetReached"].as<int>();
+  config.compPollMs = doc["compPollMs"].as<float>();
+  config.compOffset = doc["compOffset"].as<float>();
+  config.HOME_LAT = doc["HOME_LAT"].as<float>();
+  config.HOME_LON = doc["HOME_LON"].as<float>();
+  config.WAYPOINT_LAT = doc["WAYPOINT_LAT"].as<float>();
+  config.WAYPOINT_LON = doc["WAYPOINT_LON"].as<float>();  
+  config.declAngleRad = doc["declAngleRad"].as<double>();
+  config.sleepMins = doc["sleepMins"].as<int>();
+  config.touchThreshold = doc["touchThreshold"].as<int>();  
+  config.touchEnabled = doc["touchEnabled"].as<int>();  
+  config.debugHaptic = doc["debugHaptic"].as<int>();  
+  config.maxDistance = doc["maxDistance"].as<int>();
+  config.maxDelay = doc["maxDelay"].as<int>();
+  config.timeZoneOffset = doc["timeZoneOffset"].as<int>();
+  config.debug2Serial = doc["debug2Serial"].as<int>();
+  config.debugData2Serial = doc["debugData2Serial"].as<int>(); 
+  config.debug2Telnet = doc["debug2Telnet"].as<int>(); 
+  config.ftpEnabled = doc["ftpEnabled"].as<int>();
+  file.close();
+  }
+}
+
 // Saves the configuration to a file
-void saveCalibrationData(const char *filename_cal, const CalData &caldata) {
-  SPIFFS.remove(filename_cal);
-  File file = SPIFFS.open(filename_cal, FILE_WRITE);
+void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) {
+  deleteFile(SPIFFS, path);
+  File file = fs.open(path, FILE_WRITE);
   if (!file) {
     Serial.println(F("Failed to create file"));
     return;
   }
-  StaticJsonDocument<700> doc;
-  // Set the values in the document
+
+  StaticJsonDocument<CALDATA_JSON_DOCSIZE> doc;
   doc["magBiasX"] = String(caldata.magBiasX,6);
   doc["magBiasY"] = String(caldata.magBiasY,6);
   doc["magBiasZ"] = String(caldata.magBiasZ,6);  
@@ -605,63 +539,19 @@ void saveCalibrationData(const char *filename_cal, const CalData &caldata) {
   file.close();
 }
 
-// Loads the configuration from a file
-void IRAM_ATTR loadConfiguration(char *filename, Config &config) {
-  File file = SPIFFS.open(filename, "r");
-  delay(10);
-  StaticJsonDocument<860> doc;
-  DeserializationError error = deserializeJson(doc, file);
-
-  if (error){
-    Serial.println(F("Failed to read file, using default configuration"));
-    Serial.println(error.c_str());
-    saveConfiguration(filename, config);
-  }else{
-  
-  // Copy values from the JsonDocument to the Config
-  config.asAP = doc["asAP"].as<int>();
-  strlcpy(config.clientSSID,doc["clientSSID"],sizeof(config.clientSSID));
-  strlcpy(config.clientPasswd,doc["clientPasswd"],sizeof(config.clientPasswd));
-  strlcpy(config.deviceName,doc["deviceName"],sizeof(config.deviceName));
-  strlcpy(config.apPasswd,doc["apPasswd"],sizeof(config.apPasswd));
-  config.gpsPollSec = doc["gpsPollSec"].as<float>();
-  config.targetReached = doc["gpsTargetReached"].as<int>();
-  config.compPollMs = doc["compPollMs"].as<float>();
-  config.compOffset = doc["compOffset"].as<float>();
-  config.HOME_LAT = doc["HOME_LAT"].as<float>();
-  config.HOME_LON = doc["HOME_LON"].as<float>();
-  config.WAYPOINT_LAT = doc["WP_lat"].as<float>();
-  config.WAYPOINT_LON = doc["WP_lon"].as<float>();  
-  config.declAngleRad = doc["declAngleRad"].as<double>();
-  config.sleepMins = doc["sleepMins"].as<int>();
-  config.touchThreshold = doc["touchThreshold"].as<int>();  
-  config.touchEnabled = doc["touchEnabled"].as<int>();  
-  config.debugHaptic = doc["debugHaptic"].as<int>();  
-  config.maxDistance = doc["maxDistance"].as<int>();
-  config.maxDelay = doc["maxDelay"].as<int>();
-  config.timeZoneOffset = doc["timeZoneOffset"].as<int>();
-  config.debug2Serial = doc["debug2Serial"].as<int>();
-  config.debugData2Serial = doc["debugData2Serial"].as<int>(); 
-  config.debug2Telnet = doc["debug2Telnet"].as<int>(); 
-  config.ftpEnabled = doc["ftpEnabled"].as<int>();         
-  file.close();
-  }
-}
-
 // Loads the calibration data from a file
-void IRAM_ATTR loadCalibrationData(char *filename_cal, CalData &caldata) {
-  File file = SPIFFS.open(filename_cal, "r");
+void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &caldata) {
+  File file = fs.open(path, FILE_READ);
   delay(10);
-  StaticJsonDocument<700> doc;
+  StaticJsonDocument<CALDATA_JSON_DOCSIZE> doc;
   DeserializationError error = deserializeJson(doc, file);
 
   if (error){
     Serial.println(F("Failed to read file, using default configuration"));
     Serial.println(error.c_str());
-    saveCalibrationData(filename_cal, caldata);
+    saveCalibrationData(SPIFFS, filename_cal, caldata);
   }else{
   
-  // Copy values from the JsonDocument to the Config
   caldata.magBiasX = doc["magBiasX"].as<float>();
   caldata.magBiasY = doc["magBiasY"].as<float>();
   caldata.magBiasZ = doc["magBiasZ"].as<float>();  
@@ -679,36 +569,6 @@ void IRAM_ATTR loadCalibrationData(char *filename_cal, CalData &caldata) {
   caldata.accelScaleZ = doc["accelScaleZ"].as<float>();    
   file.close();
   }
-}
-
-void printFile(const char *filename) {
-  // Open file for reading
-  File file = SPIFFS.open(filename);
-  if (!file) {
-    Serial.println(F("Failed to read file"));
-    return;
-  }
-  while (file.available()) {
-    Serial.print((char)file.read());
-  }
-  Serial.println();
-  file.close();
-}
-
-String readFile(fs::FS &fs, const char * path){
-  //Serial.printf("Reading file: %s\r\n", path);
-  File file = fs.open(path, "r");
-  if(!file || file.isDirectory()){
-    Serial.println("- empty file or failed to open file");
-    return String();
-  }
-  //Serial.println("- read from file:");
-  String fileContent;
-  while(file.available()){
-    fileContent+=String((char)file.read());
-  }
-  //Serial.println(fileContent);
-  return fileContent;
 }
 
 String GetGPSTime(){
@@ -862,7 +722,6 @@ void setup(){
   Serial.begin(SerialUSBBaud);
   Serial2.begin(GPSBaud);
   delay(1000);
-  pinMode(ledPin, OUTPUT);
 
 // EEPROM setup  
   // if (!EEPROM.begin(1000)){
@@ -882,8 +741,7 @@ void setup(){
 
   Serial.println();
   delay(1000);
-  Serial.println(F("Loading configuration..."));
-  loadConfiguration(filename, config);  
+  loadConfiguration(SPIFFS, filename, config);  
   
   Serial.println();
   Serial.print("HaptiCap version: ");
@@ -953,33 +811,20 @@ void setup(){
       intCounterWifi++;
         if (intCounterWifi > 120){
           config.asAP = 1;
-          saveConfiguration(filename, config);
+          saveConfiguration(SPIFFS, filename, config);
           delay(1000);
           ESP.restart();          
         }
       }
 
-  //char clientSSID[16] = "TrizNet_AP2";
-  //char clientPasswd[16] = "T0sh7b49";    
   // initialize WiFi
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(config.clientSSID);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+
   }
  
   Serial.println("");
- 
-  // if (MDNS.begin(config.DeviceName)){
-  //   Serial.println("MDNS responder started");
-  // }
-
-  // while (!compass.begin()){
-  //   Serial.println("Could not find a valid HMC5883 sensor, check wiring!");
-  //   delay(500);
-  // }
-
   Wire.begin();
   if(!myMPU9250.init()){
     Serial.println("MPU9250 does not respond");
@@ -995,63 +840,62 @@ void setup(){
     Serial.println("Magnetometer is connected");
   }
 
-
 // Webserver setup responses
-    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/index.html", String(), false, processor);
-  timerRestart(timer2);
-  if(config.debug2Serial){
-    Serial.println("index called");
-  }
-});
+  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+      if(config.debug2Serial){
+        Serial.println("index called");
+      }
+    }
+  );
 
-  webServer.on("/main.9a48308e.css", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/main.9a48308e.css", "text/css");
-});
+  webServer.on(fileCss.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, fileCss.c_str(), "text/css");
+    }
+  );
 
-  webServer.on("/main.9a48308e.css", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/main.9a48308e.css", "text/css");
-});
+  webServer.on(fileCssMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, fileCssMap.c_str(), "text/css");
+    }
+  );
 
-  webServer.on("/main.9116520d.js", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/main.9116520d.js", "application/javascript");
-});
+  webServer.on(fileJs.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, fileJs.c_str(), "application/javascript");
+    }
+  );
 
-  webServer.on("/main.9116520d.js.map", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/main.9116520d.js.map", "text/css");
-});
+  webServer.on(fileJsMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, fileJsMap.c_str(), "application/javascript");
+    }
+  );
 
+  webServer.on("/hapticap.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/hapticap.json", "application/json");
+    }
+  );
 
-  webServer.on("/map1.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map1.jpg", "image/jpeg");
-});
+  webServer.on("/map1.jpg", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/map1.jpg", "image/jpeg");
+    }
+  );
 
-  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
-});
-
-  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
-});
-
-  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
-});
-
-  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
-});
-
-  webServer.on("/map2.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/map2.jpg", "image/jpeg");
-});
-
-  webServer.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *request){
-  request->send(SPIFFS, "/manifest.json", "application/json");  
-});
+  webServer.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/manifest.json", "application/json");  
+    }
+  );
 
 // Send a GET request to <ESP_IP>/get?input1=<inputMessage> set.html?lat=123.456&lon=78.90  setlatlong?lat=123.456&lon=78.90
-webServer.on("/setlatlon", HTTP_GET, [] (AsyncWebServerRequest *request){
+webServer.on("/setlatlon", HTTP_GET, [] (AsyncWebServerRequest *request)
+  {
     if (request->hasParam(PARAM_LAT)) {
       inputLat = request->getParam(PARAM_LAT)->value();
       inputLon = request->getParam(PARAM_LON)->value();
@@ -1072,10 +916,11 @@ webServer.on("/setlatlon", HTTP_GET, [] (AsyncWebServerRequest *request){
       Serial.println(config.WAYPOINT_LAT,6);
       Serial.println(config.WAYPOINT_LON,6);
     }    
-    saveConfiguration(filename, config);    
-    request->send(SPIFFS, "/areamap.html", String(), false, processor);
+    saveConfiguration(SPIFFS, filename, config);    
+    request->send(SPIFFS, "/areamap.html", String(), false);
     timerRestart(timer2);    
-  });
+  }
+);
 
 webServer.on("/setlatlon_home", HTTP_GET, [] (AsyncWebServerRequest *request){
     flCurrentLat = gps.location.lat();
@@ -1091,556 +936,92 @@ webServer.on("/setlatlon_home", HTTP_GET, [] (AsyncWebServerRequest *request){
       Serial.println(config.HOME_LAT,6);
       Serial.println(config.HOME_LON,6);
     }
-    saveConfiguration(filename, config);
-    request->send(SPIFFS, "/areamap.html", String(), false, processor);
+    saveConfiguration(SPIFFS, filename, config);
+    request->send(SPIFFS, "/areamap.html", String(), false);
     timerRestart(timer2);    
   });    
+  
+webServer.on( "/", HTTP_POST, []( AsyncWebServerRequest * request )
+  {
+    if ( request->authenticate( config.http_username, config.http_password ) )
+    {
+      request->send( 200 );
+    }
+    else
+    {
+      request->requestAuthentication();
+    }
+  },
+  []( AsyncWebServerRequest * request, String filename, size_t index, uint8_t *data, size_t len, bool final )
+  {
+    static bool   _authenticated;
+    static time_t startTimer;
 
-webServer.on("/setlatlon_home_test", HTTP_GET, [] (AsyncWebServerRequest *request){
-    flCurrentLat = gps.location.lat();
-    flCurrentLon = gps.location.lng();
-    config.HOME_LAT = flCurrentLat;
-    config.HOME_LON = flCurrentLon;
-    coarse2home = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
-    distance2home = distance2waypoint(config.HOME_LAT, config.HOME_LON);
-    cardinal2home = TinyGPSPlus::cardinal(coarse2home);
-    nrsatt = gps.satellites.value();        
-    if(config.debug2Serial){
-      Serial.println("Home Set");
-      Serial.println(config.HOME_LAT,6);
-      Serial.println(config.HOME_LON,6);
+    if ( !index )
+    {
+      _authenticated = false;
+      if ( request->authenticate(config.http_username, config.http_password) )
+      {
+        startTimer = millis();
+        Serial.printf( "UPLOAD: Started to receive '%s'.\n", filename.c_str() );
+        _authenticated = true;
+      }
+      else
+      {
+        Serial.println( "Unauthorized access." );
+        return request->send( 401, "text/plain", "Not logged in." );
+      }      
     }
-    saveConfiguration(filename, config);
-    request->send(SPIFFS, "/areamap_test.html", String(), false, processor);
-    timerRestart(timer2);    
-  });  
-    
-webServer.on("/setlatlon_test", HTTP_GET, [] (AsyncWebServerRequest *request){
-    if (request->hasParam(PARAM_LAT)) {
-      inputLat = request->getParam(PARAM_LAT)->value();
-      inputLon = request->getParam(PARAM_LON)->value();
-    }
-    else {
-      inputLat = "0.0";
-      inputLon = "0.0";
-    }
-    flCurrentLat = gps.location.lat();
-    flCurrentLon = gps.location.lng();
-    config.WAYPOINT_LAT = inputLat.toFloat();
-    config.WAYPOINT_LON = inputLon.toFloat();
-    distancewaypoint = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-    coarsewaypoint = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-    cardinalToWaypoint = TinyGPSPlus::cardinal(coarsewaypoint);
-    if(config.debug2Serial){
-      Serial.println("WP Set");
-      Serial.println(config.WAYPOINT_LAT,6);
-      Serial.println(config.WAYPOINT_LON,6);
-    }    
-    saveConfiguration(filename, config);   
-    request->send(SPIFFS, "/areamap_test.html", String(), false, processor);
-    timerRestart(timer2);    
-  });
 
-webServer.on("/settings.html", HTTP_GET, [] (AsyncWebServerRequest *request){
-  if (request->hasParam(PARAM_GENERALAPPLY)){
-    if (request->hasParam(PARAM_DEBUGSERIAL)){
-         inputSetting = request->getParam(PARAM_DEBUGSERIAL)->value();
-              if(inputSetting == "debug2serial"){
-              config.debug2Serial = 1;
-              Serial.println("config.Debug2Serial = 1;"); 
-             }
-    }else{
-      config.debug2Serial = 0;
-      Serial.println("config.Debug2Serial = 0;");
-    }    
-    if (request->hasParam(PARAM_DEBUGTELNET)) {
-        inputSetting = request->getParam(PARAM_DEBUGTELNET)->value();
-          if(inputSetting == "telnet"){
-              config.debug2Telnet = 1;
-              if(config.debug2Serial){
-                Serial.println("config.Debug2Telnet = 1;"); 
-              }
-          }
-    }else{
-      config.debug2Telnet = 0;
-      if(config.debug2Serial){
-        Serial.println("config.Debug2Telnet = 0;");             
-      }
+    if ( _authenticated )
+    {
+      //Serial.printf( "%i bytes received.\n", index );
+      //Store or do something with the data...
     }
-    if (request->hasParam(PARAM_DEBUGDATASERIAL)) {
-         inputSetting = request->getParam(PARAM_DEBUGDATASERIAL)->value();
-              if(inputSetting == "Dataserial"){
-              config.debugData2Serial = 1;
-              if(config.debug2Serial){
-                Serial.println("config.DebugData2Serial = 1;"); 
-              }
-              bPrintHeader = 1;
-          }
-    }else{
-      config.debugData2Serial = 0;
-      if(config.debug2Serial){
-        Serial.println("config.DebugData2Serial = 0;");
-      }
-          }              
-    if (request->hasParam(PARAM_DEBUGHAPTIC)) {
-        inputSetting = request->getParam(PARAM_DEBUGHAPTIC)->value();      
-          if(inputSetting == "haptic"){
-              config.debugHaptic = 1;
-              if(config.debug2Serial){   
-              Serial.println("config.DebugHaptic = 1;");      
-              }
-          }     
-    }else{
-      config.debugHaptic = 0;
-      if(config.debug2Serial){
-        Serial.println("config.DebugHaptic = 0;"); 
-      }
-    }
-    /*
-    if (request->hasParam(PARAM_DEBUGMPU)) {
-        inputSetting = request->getParam(PARAM_DEBUGMPU)->value();      
-          if(inputSetting == "debug4mpu"){
-              config.Debug4MPU = 1;
-              if(config.Debug2Serial){   
-                Serial.println("config.Debug4MPU = 1;");      
-              }
-          }     
-    }else{
-      config.Debug4MPU = 0;
-      if(config.Debug2Serial){
-        Serial.println("config.Debug4MPU = 0;"); 
-      }
-    }  */  
-    if (request->hasParam(PARAM_FTPMODE)) {
-        inputSetting = request->getParam(PARAM_FTPMODE)->value();      
-          if(inputSetting == "ftp"){
-              config.ftpEnabled = 1;
-              if(config.ftpEnabled){   
-              Serial.println("config.FTPEnabled = 1;");      
-              }
-          }     
-    }else{
-      config.ftpEnabled = 0;
-      if(config.ftpEnabled){
-        Serial.println("config.FTPEnabled = 0;"); 
-      }
-    }    
-    if(request->hasParam(PARAM_SSID)){
-        inputSetting = request->getParam(PARAM_SSID)->value();
-        if(inputSetting.length() > 0 && inputSetting.length() < 17){
-          inputSetting.toCharArray(config.clientSSID,16);
-          if(config.debug2Serial){
-            Serial.println(inputSetting);
-          }
-          bSaveConfig = 1;
-        }else{
-          if(config.debug2Serial){
-          Serial.println(config.clientSSID);    
-          }
-        }
-          if (request->hasParam(PARAM_APMODE)) {
-          inputSetting = request->getParam(PARAM_APMODE)->value();      
-            if(inputSetting == "ap_modeon"){
-              if(!config.asAP){
-                config.asAP = 1;
-                if(config.debug2Serial){
-                  Serial.println("ap_mode_onoff =>1");
-                }
-                saveConfiguration(filename, config);
-                delay(1000);
-                ESP.restart();      
-              }
-          }     
-            }else{
-              if(config.asAP){
-                config.asAP = 0;
-                if(config.debug2Serial){                
-                  Serial.println("ap_mode_onoff =>0");
-                }
-                saveConfiguration(filename, config);
-                delay(1000);
-                ESP.restart();
-              }  
-            }
-          }
-          if(request->hasParam(PARAM_CLIENTPASSWD)){
-              inputSetting = request->getParam(PARAM_CLIENTPASSWD)->value();
-              if(inputSetting.length() > 0 && inputSetting.length() < 25){
-                if(inputSetting == "**********"){
-                   if(config.debug2Serial){
-                    Serial.println("**********");
-                   }
-                }else{
-                  inputSetting.toCharArray(config.clientPasswd,24);
-                  if(config.debug2Serial){
-                    Serial.println(inputSetting);
-                  }              
-                  bSaveConfig = 1;
-                  if(config.debug2Serial){
-                    Serial.println(config.clientPasswd);
-                  }
-                }
-              }
-          }
-          if(request->hasParam(PARAM_DEVICENAME)){
-              inputSetting = request->getParam(PARAM_DEVICENAME)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 25){
-                inputSetting.toCharArray(config.deviceName,24);
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                bSaveConfig = 1;
-                if(config.debug2Serial){
-                  Serial.println(config.deviceName);
-                }
-              }
-          }
-        if(request->hasParam(PARAM_AP_PASSWD)){
-            inputSetting = request->getParam(PARAM_AP_PASSWD)->value();
-            if(inputSetting.length() > 0 && inputSetting.length() < 25){
-              inputSetting.toCharArray(config.apPasswd,24);
-              if(config.debug2Serial){
-                Serial.println(inputSetting);
-              }
-              bSaveConfig = 1;
-              if(config.debug2Serial){
-                Serial.println(config.apPasswd);
-              }
-            }
-        }
-     
-        if(request->hasParam(PARAM_COMPASSOFFSET)){
-            inputSetting = request->getParam(PARAM_COMPASSOFFSET)->value();
-            if(inputSetting.length() > 0  && inputSetting.length() < 10){
-              config.compOffset = inputSetting.toFloat();
-              if(config.debug2Serial){
-                Serial.println(inputSetting);
-              }
-              bSaveConfig = 1;
-              if(config.debug2Serial){
-                Serial.println(config.compOffset);
-              }
-            }
-        }
-        if(request->hasParam(PARAM_COMPASSDECLANGLE)){
-            inputSetting = request->getParam(PARAM_COMPASSDECLANGLE)->value();
-            if(inputSetting.length() > 0  && inputSetting.length() < 15){
-              config.declAngleRad = inputSetting.toDouble();
-              if(config.debug2Serial){
-                Serial.println(inputSetting);
-              }
-              bSaveConfig = 1;
-              if(config.debug2Serial){
-                Serial.println(config.declAngleRad);
-              }
-            }
-        }    
-        if(request->hasParam(PARAM_COMPASSPOLLTIME)){
-            inputSetting = request->getParam(PARAM_COMPASSPOLLTIME)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 5){
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                config.compPollMs = inputSetting.toInt();
-                bSaveConfig = 1;
-                timerEnd(timer1);
-                timer1 = timerBegin(1, 80, true);
-                timerAttachInterrupt(timer1, &onTimer1, true);
-                timerAlarmWrite(timer1, (config.compPollMs * 1000), true);            // 1 ms
-                timerAlarmEnable(timer1);
-                timerRestart(timer1);              
-                if(config.debug2Serial){
-                  Serial.println(config.compPollMs);                      
-                }
-              }
-        }
-   
-        if(request->hasParam(PARAM_GPSPOLLTIME)){
-            inputSetting = request->getParam(PARAM_GPSPOLLTIME)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 5){
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                config.gpsPollSec = inputSetting.toInt();
-                bSaveConfig = 1;
-                timerEnd(timer0);
-                timer0 = timerBegin(0, 80, true);
-                timerAttachInterrupt(timer0, &onTimer0, true);
-                timerAlarmWrite(timer0, (config.gpsPollSec * 1000000), true);             // sec
-                timerAlarmEnable(timer0);
-                timerRestart(timer0);
-                if(config.debug2Serial){
-                  Serial.println(config.gpsPollSec);            
-                }
-              }
-        }
-        if(request->hasParam(PARAM_GPSTARGETREACHED)){
-            inputSetting = request->getParam(PARAM_GPSTARGETREACHED)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 3){
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                config.targetReached = inputSetting.toInt();
-                bSaveConfig = 1;
-                if(config.debug2Serial){
-                  Serial.println(config.targetReached);            
-                }
-              }
-        }
-        if(request->hasParam(PARAM_LAT)){
-            inputSetting = request->getParam(PARAM_LAT)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 10){
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                config.WAYPOINT_LAT = inputSetting.toDouble();
-                bSaveConfig = 1;
-                if(config.debug2Serial){
-                  Serial.println(config.WAYPOINT_LAT);            
-                }
-              }
-        }  
-        if(request->hasParam(PARAM_LON)){
-            inputSetting = request->getParam(PARAM_LON)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 10){
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                config.WAYPOINT_LON = inputSetting.toDouble();
-                bSaveConfig = 1;
-                if(config.debug2Serial){
-                  Serial.println(config.WAYPOINT_LON);            
-                }
-              }
-        }                          
-        if(request->hasParam(PARAM_ESP_SLEEPTIME)){
-            inputSetting = request->getParam(PARAM_ESP_SLEEPTIME)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 5){
-                if(config.debug2Serial){
-                  Serial.println(inputSetting);
-                }
-                config.sleepMins = inputSetting.toInt();
-                bSaveConfig = 1;
-                timerEnd(timer2);
-                timer2 = timerBegin(2, 80, true);
-                timerAttachInterrupt(timer2, &onTimer2, true);                
-                timerAlarmWrite(timer2, (config.sleepMins * 60000000), true);            // mins
-                timerAlarmEnable(timer2);
-                timerRestart(timer2);
-                if(config.debug2Serial){
-                  Serial.println(config.sleepMins); 
-                }
-              }
-        }
-    
-        if (request->hasParam(PARAM_TOUCH)) {
-            inputSetting = request->getParam(PARAM_TOUCH)->value();      
-              if(inputSetting == "touch_enabled"){
-                  config.touchEnabled = 1;
-                  bSaveConfig = 1;
-                  if(config.debug2Serial){   
-                    Serial.println("config.TouchEnabled = 1;");      
-                  }
-              }     
-        }else{
-          bSaveConfig = 1;
-          config.touchEnabled = 0;
-          if(config.debug2Serial){
-            Serial.println("config.TouchEnabled = 0;"); 
-          }
-        }    
-        if(request->hasParam(PARAM_TOUCHTHRESHOLD)){
-            inputSetting = request->getParam(PARAM_TOUCHTHRESHOLD)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 3){
-                config.touchThreshold = inputSetting.toInt();
-                bSaveConfig = 1;
-                timerRestart(timer2);
-                if(config.debug2Serial){
-                  Serial.println(config.touchThreshold); 
-                }
-              }
-        }
-        if(request->hasParam(PARAM_MAXDELAY)){
-            inputSetting = request->getParam(PARAM_MAXDELAY)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 5){
-                config.maxDelay = inputSetting.toInt();
-                if(config.maxDelay < 200){
-                  config.maxDelay = 200;
-                }
-                 
-                bSaveConfig = 1;
-                timerRestart(timer2);
-                if(config.debug2Serial){
-                  Serial.println(config.maxDelay); 
-                }
-              }
-        }   
-        if(request->hasParam(PARAM_MAXDISTANCE)){
-            inputSetting = request->getParam(PARAM_MAXDISTANCE)->value();
-              if(inputSetting.length() > 0  && inputSetting.length() < 5){
-                config.maxDistance = inputSetting.toInt();
-                if(config.maxDistance < 100) {
-                  config.maxDistance = 100;
-                }
-                bSaveConfig = 1;
-                timerRestart(timer2);
-                if(config.debug2Serial){
-                  Serial.println(config.maxDistance); 
-                }
-              }
-        }
-                      
-    }else if (request->hasParam(PARAM_GENERALSETNORTH)){
-         inputSetting = request->getParam(PARAM_GENERALSETNORTH)->value();
-              if(inputSetting == "SetNorth"){
-                if(headingraw <= 180){
-                  config.compOffset = headingraw;
-                }
-                if(headingraw > 180){
-                config.compOffset = -1.0 * (360 - headingraw);
-                }
-                if(config.debug2Serial){
-                  Serial.print("Heading compass raw: "); 
-                  Serial.println(headingraw); 
-                  Serial.print("Heading Offset: "); 
-                  Serial.println(config.compOffset); 
-                }
-             bSaveConfig = 1;                                   
-             }
-    } 
-    /*
-    else if (request->hasParam(PARAM_GENERALCALGYRO)){
-         inputSetting = request->getParam(PARAM_GENERALCALGYRO)->value();
-              if(inputSetting == "Gyro"){
-                bCalGyro = 1;
-             }      
-          
-    }else if (request->hasParam(PARAM_GENERALCALACCEL)){
-         inputSetting = request->getParam(PARAM_GENERALCALACCEL)->value();
-              if(inputSetting == "Accelerometer"){
-                bCalAccel = 1;
-             }
-      
-    }else if (request->hasParam(PARAM_GENERALCALMAG)){
-         inputSetting = request->getParam(PARAM_GENERALCALMAG)->value();
-              if(inputSetting == "Compass"){
-                bCalMag = 1;
-             }
-      
-    }
-    */
-    if(bSaveConfig){
-    saveConfiguration(filename, config);         
-    bSaveConfig = 0;
-    }
-    request->send(SPIFFS, "/settings.html",  String(), false, processor);
-    timerRestart(timer2);
-    if(config.debug2Serial){
-      Serial.println("Settings.html Called");
+
+
+    if ( final && _authenticated )
+    {
+      Serial.printf( "UPLOAD: Done. Received %.2f kBytes in %.2fs which is %i kB/s.\n", index / 1024.0, ( millis() - startTimer ) / 1000.0, index / ( millis() - startTimer ) );
     }
   });
 
-/*
-server.on("/cal_data.html", HTTP_GET, [] (AsyncWebServerRequest *request){
-    if (request->hasParam(PARAM_GENERALCALGYRO)){
-         inputSetting = request->getParam(PARAM_GENERALCALGYRO)->value();
-              if(inputSetting == "Gyro"){
-                bCalGyro = 1;
-                  if(config.Debug2Serial){
-                    Serial.println("bCalGyro = 1");
-                  }
-              }    
-          }
-     if (request->hasParam(PARAM_GENERALCALACCEL)){
-         inputSetting = request->getParam(PARAM_GENERALCALACCEL)->value();
-              if(inputSetting == "Accelerometer"){
-                bCalAccel = 1;
-                  if(config.Debug2Serial){
-                    Serial.println("bCalAccel = 1");
-                  }                
-             }
-          }
-   if (request->hasParam(PARAM_GENERALCALMAG)){
-         inputSetting = request->getParam(PARAM_GENERALCALMAG)->value();
-              if(inputSetting == "Compass"){
-                bCalMag = 1;
-                  if(config.Debug2Serial){
-                    Serial.println("bCalMag = 1");
-                  }                
-             }
-          }
-    request->send(SPIFFS, "/cal_data.html",  String(), false, processor);
-    timerRestart(timer2);
-    if(config.Debug2Serial){
-      Serial.println("cal_data.html Called");
-    }  
-});
-  */
+  webServer.onNotFound( []( AsyncWebServerRequest * request )
+  {
+    Serial.printf("NOT_FOUND: ");
+    if (request->method() == HTTP_GET)
+      Serial.printf("GET");
+    else if (request->method() == HTTP_POST)
+      Serial.printf("POST");
+    else if (request->method() == HTTP_DELETE)
+      Serial.printf("DELETE");
+    else if (request->method() == HTTP_PUT)
+      Serial.printf("PUT");
+    else if (request->method() == HTTP_PATCH)
+      Serial.printf("PATCH");
+    else if (request->method() == HTTP_HEAD)
+      Serial.printf("HEAD");  
+    else if (request->method() == HTTP_OPTIONS)
+      Serial.printf("OPTIONS");
+    else
+      Serial.printf("UNKNOWN");
+    Serial.printf(" http://%s%s\n", request->host().c_str(), request->url().c_str());
+    request->send( 404, "text/plain", "Not found." );
+  });
+
   webServer.onNotFound(notFound);
   webServer.begin();
+  
   // Start server
   if (SPIFFS.begin(true)) {
 
   }
 
-  // TelNetserver.begin();
-  // TelNetserver.setNoDelay(true);
-  // ftpSrv.begin(config.DeviceName,config.AP_Passwd);
   while (Serial2.available()){
     gps.encode(Serial2.read());  
   }
 
 getInitialReadings();
-
-if(bDumpConfig){  
-  Serial.print("As Accesspoint: ");
-  Serial.println(config.asAP);
-  Serial.print("Client to SSID: ");
-  Serial.println(config.clientSSID);
-  Serial.print("Client Password: ");
-  Serial.println(config.clientPasswd);
-  Serial.print("Devicename: ");
-  Serial.println(config.deviceName);
-  Serial.print("Device password: ");
-  Serial.println(config.apPasswd);
-  Serial.print("GPS polling(s): ");
-  Serial.println(config.gpsPollSec);
-  Serial.print("Compass polling(ms): ");
-  Serial.println(config.compPollMs);
-  Serial.print("Compass offset(deg): ");
-  Serial.println(config.compOffset);
-  Serial.print("Homebase(lat): ");
-  Serial.println(config.HOME_LAT,6);
-  Serial.print("Homebase(lon):" );
-  Serial.println(config.HOME_LON,6);
-  Serial.print("Waypoint(lat): ");
-  Serial.println(config.WAYPOINT_LAT,6);
-  Serial.print("Waypoint(lon):" );
-  Serial.println(config.WAYPOINT_LON,6);  
-  Serial.print("Declanation angle(rads): ");
-  Serial.println(config.declAngleRad,12);
-  Serial.print("Sleeptime(mins): ");
-  Serial.println(config.sleepMins);
-  Serial.print("Threshold touch: ");
-  Serial.println(config.touchThreshold);
-  Serial.print("Enable touch: ");
-  Serial.println(config.touchEnabled);
-  Serial.print("Timezone offset: ");
-  Serial.println(config.timeZoneOffset);
-  Serial.print("Haptic feedback Debug: ");
-  Serial.println(config.debugHaptic);
-  Serial.print("Pulsed max distance: ");
-  Serial.println(config.maxDistance);
-  Serial.print("Max Delay between pulses: ");
-  Serial.println(config.maxDelay);
-  Serial.print("Debug2Serial: ");
-  Serial.println(config.debug2Serial);  
-  Serial.print("Debug RAW GPS to telnet: ");
-  Serial.println(config.debug2Telnet);
-  Serial.print("FTP Enabled: ");
-  Serial.println(config.ftpEnabled);  
-  bDumpConfig = 0;
-}
 
 timerAlarmEnable(timer0);
 timerAlarmEnable(timer1);
@@ -1648,12 +1029,12 @@ timerAlarmEnable(timer2);
 Serial.print("HaptiCap ready @ ");
 GPSTime = GetGPSTime();
 Serial.println(GPSTime);
-
+Serial.print("IP address: ");
+Serial.println(WiFi.localIP());
 }
  
-
-
-
 void loop(){
-   //ftpSrv.handleFTP();
+  if(config.ftpEnabled)
+     ftpSrv.handleFTP();
+
 }
