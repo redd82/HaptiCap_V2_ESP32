@@ -1,7 +1,9 @@
 #include <Arduino.h>
 
+
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
+#include <DNSServer.h>
 #include "SPIFFS.h"
 #include "TinyGPS++.h"
 #include <ESP8266FtpServer.h>
@@ -30,6 +32,7 @@ void loop();
 // _Config_
 struct Config {
   uint8_t http_port = 80;
+  uint8_t dns_port = 53;
   bool asAP = 0;
   char clientSSID[16] = "TrizNet_AP2";
   char clientPasswd[16] = "T0sh7b49";
@@ -210,6 +213,9 @@ int secs;
 int intCounterWifi = 0;
 bool bUseTimerInterrupt = 1;
 bool bYouRang = 0;
+String proficiency;
+bool name_received = false;
+bool proficiency_received = false;
 bool bNoJSONfile = 0;
 bool bJSONnotvalid = 0;
 bool haptictouchT0 = 0;
@@ -254,6 +260,7 @@ MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
 WiFiServer TelNetserver(23);
 WiFiClient serverClients[MAX_SRV_CLIENTS];
 AsyncWebServer webServer(config.http_port);
+DNSServer dnsServer;
 FtpServer ftpSrv;
 
 /*
@@ -716,129 +723,7 @@ static void printLines(unsigned long distance2Waypoint, float course2Waypoint, f
   Serial.println();  
 }
 
-
-void setup(){
-  // Serial port for debugging purposes
-  Serial.begin(SerialUSBBaud);
-  Serial2.begin(GPSBaud);
-  delay(1000);
-
-// EEPROM setup  
-  // if (!EEPROM.begin(1000)){
-  //   Serial.println("Failed to initialise EEPROM");
-  //   Serial.println("Restarting...");
-  //   delay(1000);
-  //   ESP.restart();
-  // }
-
-  // Initialize SPIFFS
-  if(!SPIFFS.begin(true)){
-      while (1)
-        Serial.println("SPIFFS.begin() failed");
-  } else {
-     listDir(SPIFFS, "/", 0);
-  }
-
-  Serial.println();
-  delay(1000);
-  loadConfiguration(SPIFFS, filename, config);  
-  
-  Serial.println();
-  Serial.print("HaptiCap version: ");
-  Serial.println(SWVERSION);
-  Serial.println("By Chrysnet.com and Triznet.com");
-
-//Setup interrupt on Touch Pad 1 (GPIO0) and wake up
-  touchAttachInterrupt(T0, callbackT0, config.touchThreshold);
-  touchAttachInterrupt(T3, callbackT3, config.touchThreshold);
-  esp_sleep_enable_touchpad_wakeup();
-  
-// Initialize outputs
-  pinMode(buttonPin,INPUT);
-  pinMode(led, OUTPUT);
-  pinMode(dta_rdy_pin,INPUT);
-
-// timer0 setup
-  timer0 = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer0, &onTimer0, true);
-  timerAlarmWrite(timer0, (config.gpsPollSec * 1000000), true);           // 1000 ms
-// timer1 setup
-  timer1 = timerBegin(1, 80, true);
-  timerAttachInterrupt(timer1, &onTimer1, true);
-  timerAlarmWrite(timer1, (config.compPollMs * 1000), true);            // 1 ms
-// timer2 setup
-  timer2 = timerBegin(2, 80, true);
-  timerAttachInterrupt(timer2, &onTimer2, true);
-  timerAlarmWrite(timer2, (config.sleepMins * 60000000), true);            // 1 min
-  
-//PWM setup
-  ledcSetup(pwmhapticfront, hapticfreq, resolution);
-  ledcSetup(pwmhapticright, hapticfreq, resolution);
-  ledcSetup(pwmhapticrear, hapticfreq, resolution);
-  ledcSetup(pwmhapticleft, hapticfreq, resolution);
-  ledcAttachPin(hapticfront, pwmhapticfront);
-  ledcAttachPin(hapticright, pwmhapticright);
-  ledcAttachPin(hapticrear, pwmhapticrear);
-  ledcAttachPin(hapticleft, pwmhapticleft);
-  digitalWrite(led, 0);
-
-  delay(500);
-  // Connect to Wi-Fi network with SSID and password
-  if (config.asAP) {
-      WiFi.mode( WIFI_AP );
-      IPAddress ip( 192, 168, 1, 1 );
-      IPAddress gateway( 192, 168, 1, 1 );
-      IPAddress subnet( 255, 255, 0, 0 );
-      WiFi.softAP(config.deviceName,config.apPasswd);
-      delay(2000);
-      WiFi.softAPConfig( ip, gateway, subnet );
-      Serial.print("Setting HaptiCap up as AP: ");
-      Serial.println(config.deviceName);
-      Serial.println(config.apPasswd);      
-      IPAddress IP = WiFi.softAPIP();
-      Serial.print("AP IP address: ");
-      Serial.println(IP);
-  }else{
-      Serial.print("Setting HapiCap as client to network ");
-      Serial.print(config.clientSSID);
-      WiFi.mode(WIFI_STA);
-      WiFi.begin(config.clientSSID, config.clientPasswd);
-      intCounterWifi = 0;
-      
-    while (WiFi.status() != WL_CONNECTED){
-      delay(500);
-      Serial.print(".");
-      intCounterWifi++;
-        if (intCounterWifi > 120){
-          config.asAP = 1;
-          saveConfiguration(SPIFFS, filename, config);
-          delay(1000);
-          ESP.restart();          
-        }
-      }
-
-  // initialize WiFi
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(config.clientSSID);
-
-  }
- 
-  Serial.println("");
-  Wire.begin();
-  if(!myMPU9250.init()){
-    Serial.println("MPU9250 does not respond");
-  }
-  else{
-    Serial.println("MPU9250 is connected");
-  }
-
-  if(!myMPU9250.initMagnetometer()){
-    Serial.println("Magnetometer does not respond");
-  }
-  else{
-    Serial.println("Magnetometer is connected");
-  }
+void webServerSetup(){
 
 // Webserver setup responses
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -956,7 +841,6 @@ webServer.on( "/", HTTP_POST, []( AsyncWebServerRequest * request )
   {
     static bool   _authenticated;
     static time_t startTimer;
-
     if ( !index )
     {
       _authenticated = false;
@@ -987,31 +871,139 @@ webServer.on( "/", HTTP_POST, []( AsyncWebServerRequest * request )
   });
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
-  {
-    Serial.printf("NOT_FOUND: ");
-    if (request->method() == HTTP_GET)
-      Serial.printf("GET");
-    else if (request->method() == HTTP_POST)
-      Serial.printf("POST");
-    else if (request->method() == HTTP_DELETE)
-      Serial.printf("DELETE");
-    else if (request->method() == HTTP_PUT)
-      Serial.printf("PUT");
-    else if (request->method() == HTTP_PATCH)
-      Serial.printf("PATCH");
-    else if (request->method() == HTTP_HEAD)
-      Serial.printf("HEAD");  
-    else if (request->method() == HTTP_OPTIONS)
-      Serial.printf("OPTIONS");
-    else
-      Serial.printf("UNKNOWN");
-    Serial.printf(" http://%s%s\n", request->host().c_str(), request->url().c_str());
-    request->send( 404, "text/plain", "Not found." );
-  });
-
-  webServer.onNotFound(notFound);
+     {
+      request->send(SPIFFS, "/redirect.html", String(), false, processor);
+      //timerRestart(timer2);
+      Serial.println("redirect called");
+    });
   webServer.begin();
+  Serial.println("HTTP Started on port: ");
+  Serial.print(config.http_port);
+}
+
+void setup(){
+  // Serial port for debugging purposes
+  Serial.begin(SerialUSBBaud);
+  Serial2.begin(GPSBaud);
+  delay(1000);
+
+// EEPROM setup  
+  // if (!EEPROM.begin(1000)){
+  //   Serial.println("Failed to initialise EEPROM");
+  //   Serial.println("Restarting...");
+  //   delay(1000);
+  //   ESP.restart();
+  // }
+
+  // Initialize SPIFFS
+  if(!SPIFFS.begin(true)){
+      while (1)
+        Serial.println("SPIFFS.begin() failed");
+  } else {
+     listDir(SPIFFS, "/", 0);
+  }
+
+  Serial.println();
+  delay(1000);
+  loadConfiguration(SPIFFS, filename, config);  
   
+  Serial.println();
+  Serial.print("HaptiCap version: ");
+  Serial.println(SWVERSION);
+  Serial.println("By Chrysnet.com and Triznet.com");
+
+//Setup interrupt on Touch Pad 1 (GPIO0) and wake up
+  touchAttachInterrupt(T0, callbackT0, config.touchThreshold);
+  touchAttachInterrupt(T3, callbackT3, config.touchThreshold);
+  esp_sleep_enable_touchpad_wakeup();
+  
+// Initialize outputs
+  pinMode(buttonPin,INPUT);
+  pinMode(led, OUTPUT);
+  pinMode(dta_rdy_pin,INPUT);
+
+// timer0 setup
+  timer0 = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer0, &onTimer0, true);
+  timerAlarmWrite(timer0, (config.gpsPollSec * 1000000), true);           // 1000 ms
+// timer1 setup
+  timer1 = timerBegin(1, 80, true);
+  timerAttachInterrupt(timer1, &onTimer1, true);
+  timerAlarmWrite(timer1, (config.compPollMs * 1000), true);            // 1 ms
+// timer2 setup
+  timer2 = timerBegin(2, 80, true);
+  timerAttachInterrupt(timer2, &onTimer2, true);
+  timerAlarmWrite(timer2, (config.sleepMins * 60000000), true);            // 1 min
+  
+//PWM setup
+  ledcSetup(pwmhapticfront, hapticfreq, resolution);
+  ledcSetup(pwmhapticright, hapticfreq, resolution);
+  ledcSetup(pwmhapticrear, hapticfreq, resolution);
+  ledcSetup(pwmhapticleft, hapticfreq, resolution);
+  ledcAttachPin(hapticfront, pwmhapticfront);
+  ledcAttachPin(hapticright, pwmhapticright);
+  ledcAttachPin(hapticrear, pwmhapticrear);
+  ledcAttachPin(hapticleft, pwmhapticleft);
+  digitalWrite(led, 0);
+
+  delay(500);
+  // Connect to Wi-Fi network with SSID and password
+  if (config.asAP) {
+      WiFi.mode( WIFI_MODE_APSTA );
+      IPAddress ip( 192, 168, 1, 1 );
+      IPAddress gateway( 192, 168, 1, 1 );
+      IPAddress subnet( 255, 255, 255, 0 );
+      WiFi.softAP(config.deviceName,config.apPasswd);
+      delay(2000);
+      WiFi.softAPConfig( ip, gateway, subnet );
+      Serial.print("Setting HaptiCap up as AP: ");
+      Serial.println(config.deviceName);
+      Serial.println(config.apPasswd);      
+      IPAddress IP = WiFi.softAPIP();
+      Serial.print("AP IP address: ");
+      Serial.println(IP);
+  }else{
+      Serial.print("Setting HapiCap as client to network ");
+      Serial.print(config.clientSSID);
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(config.clientSSID, config.clientPasswd);
+      intCounterWifi = 0;
+      
+    while (WiFi.status() != WL_CONNECTED){
+      delay(500);
+      Serial.print(".");
+      intCounterWifi++;
+        if (intCounterWifi > 120){
+          config.asAP = 1;
+          saveConfiguration(SPIFFS, filename, config);
+          delay(1000);
+          ESP.restart();          
+        }
+      }
+
+  // initialize WiFi
+    Serial.println("");
+    Serial.print("Connected to ");
+    Serial.println(config.clientSSID);
+
+  }
+ 
+  Serial.println("");
+  Wire.begin();
+  if(!myMPU9250.init()){
+    Serial.println("MPU9250 does not respond");
+  }
+  else{
+    Serial.println("MPU9250 is connected");
+  }
+
+  if(!myMPU9250.initMagnetometer()){
+    Serial.println("Magnetometer does not respond");
+  }
+  else{
+    Serial.println("Magnetometer is connected");
+  }
+
   // Start server
   if (SPIFFS.begin(true)) {
 
@@ -1022,18 +1014,29 @@ webServer.on( "/", HTTP_POST, []( AsyncWebServerRequest * request )
   }
 
 getInitialReadings();
-
 timerAlarmEnable(timer0);
 timerAlarmEnable(timer1);
 timerAlarmEnable(timer2);
 Serial.print("HaptiCap ready @ ");
 GPSTime = GetGPSTime();
 Serial.println(GPSTime);
-Serial.print("IP address: ");
-Serial.println(WiFi.localIP());
+
+if(!config.asAP){
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  }else{
+    dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
+    Serial.println("DNS Started on port.");
+    Serial.println(config.dns_port);
+  }
+
+ webServerSetup();  
 }
  
 void loop(){
+if(config.asAP){  
+  dnsServer.processNextRequest();
+}
   if(config.ftpEnabled)
      ftpSrv.handleFTP();
 
