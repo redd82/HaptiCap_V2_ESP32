@@ -11,15 +11,15 @@
 #include <MPU9250_WE.h>
 #include <Wire.h>
 #include <string>
-
 #include "functions.h"
 
 #define SWVERSION 2.001
 #define MPU9250_ADDR 0x68
 #define MAX_SRV_CLIENTS 2
 #define INPUT_SIZE 20
-#define CONFIG_JSON_DOCSIZE 860
-#define CALDATA_JSON_DOCSIZE 700
+#define CONFIG_JSON_DOCSIZE 1024
+#define CALDATA_JSON_DOCSIZE 768
+#define DEBUGSETTINGS_JSON_DOCSIZE 768
 
 void setup();
 void setupIO();
@@ -36,6 +36,7 @@ struct Config {
   bool asAP = 0;
   char clientSSID[16] = "TrizNet_AP2";
   char clientPasswd[16] = "T0sh7b49";
+  int connectionTimeOut = 120;
   char deviceName[16] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
   char apPasswd[16] = "prutser00";
   char http_username[16] = "admin";
@@ -55,10 +56,6 @@ struct Config {
   int touchThreshold = 50;
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = 1;
-  bool debugHaptic = 0;
-  bool debug2Telnet = 0;
-  bool debug2Serial = 0;
-  bool debugData2Serial = 0;
   bool ftpEnabled = 0;
 };
 
@@ -81,12 +78,21 @@ struct CalData {
   float accelScaleZ = 1.0;
 };
 
+struct DebugSettings {
+  bool debugHaptic = 0;
+  bool debug2Telnet = 0;
+  bool debug2Serial = 0;
+  bool debugData2Serial = 0;
+};
+
 Config config;                         // <- global configuration object
 CalData caldata;
+DebugSettings debugSettings;
 
 // _PARAMS_
 const char* filename = "/hapticap.json";
 const char* filename_cal = "/caldata.json";
+const char* filename_debug = "/debug.json";
 String fileJs = "/";
 String fileJsMap = "/";
 String fileCss = "/";
@@ -94,39 +100,6 @@ String fileCssMap = "/";
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
-const char* PARAM_LAT = "lat";
-const char* PARAM_LON = "lon";
-const char* PARAM_LATHOME = "lathome";
-const char* PARAM_LONHOME = "lonhome";
-const char* PARAM_GENERALSETNORTH = "setnorth";
-const char* PARAM_DEBUGTELNET = "debugtelnet";
-const char* PARAM_DEBUGSERIAL = "debugserial";
-const char* PARAM_DEBUGDATASERIAL = "debugDataserial";
-const char* PARAM_DEBUGHAPTIC = "debughaptic";
-const char* PARAM_DEBUGAPPLY = "DebugApply";
-const char* PARAM_APMODE = "ap_mode";
-const char* PARAM_FTPMODE = "FTPMode";
-const char* PARAM_SSID = "ssid";
-const char* PARAM_CLIENTPASSWD = "client_passwd";
-const char* PARAM_DEVICENAME = "devicename";
-const char* PARAM_AP_PASSWD = "ap_password";
-const char* PARAM_NETWORKAPPLY = "NetworkApply";
-const char* PARAM_COMPASSOFFSET = "compass_offset";
-const char* PARAM_COMPASSDECLANGLE = "comapss_declangle";
-const char* PARAM_COMPASSPOLLTIME = "compass_polltime";
-const char* PARAM_COMPASSAPPLY = "CompassApply";
-const char* PARAM_GPS = "gps";
-const char* PARAM_GPSPOLLTIME = "gps_polltime";
-const char* PARAM_GPSTARGETREACHED = "gps_targetreached";
-const char* PARAM_GPSAPPLY = "GPSApply";
-const char* PARAM_ESP_SLEEPTIME = "esp_sleeptime";
-const char* PARAM_TOUCH = "touch";
-const char* PARAM_TOUCHTHRESHOLD = "touch_threshold";
-const char* PARAM_MAXDELAY = "gps_max_delay";
-const char* PARAM_MAXDISTANCE = "gps_max_distance";
-const char* PARAM_GENERAL = "general";
-const char* PARAM_GENERALAPPLY = "GeneralApply";
-const char* PARAM_RESTARTESP = "restart";    
 const char* cardinalCompHeading;
 const char* cardinalToWaypoint;
 const char* cardinal2home;
@@ -254,6 +227,9 @@ void IRAM_ATTR onTimer2(){
 // #include "config_save_load.h"
 
 // Make sensor and server objects
+StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
+StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
+StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
 MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
@@ -429,6 +405,31 @@ void deleteFile(fs::FS &fs, const char * path){
     }
 }
 
+void saveConfigDataToJSON(){
+  configDoc["asAP"] = String(config.asAP);
+  configDoc["clientSSID"] = config.clientSSID;
+  configDoc["clientPasswd"] = config.clientPasswd;
+  configDoc["connectionTimeOut"] = config.connectionTimeOut;
+  configDoc["deviceName"] = config.deviceName;
+  configDoc["apPasswd"] = config.apPasswd;
+  configDoc["gpsPollSec"] = String(config.gpsPollSec);
+  configDoc["targetReached"] = String(config.targetReached);  
+  configDoc["compPollMs"] = String(config.compPollMs);
+  configDoc["compOffset"] = String(config.compOffset);
+  configDoc["HOME_LAT"] = String(config.HOME_LAT,6);
+  configDoc["HOME_LON"] = String(config.HOME_LON,6);
+  configDoc["WAYPOINT_LAT"] = String(config.WAYPOINT_LAT,6);
+  configDoc["WAYPOINT_LON"] = String(config.WAYPOINT_LON,6);  
+  configDoc["declAngleRad"] = String(config.declAngleRad,14);
+  configDoc["sleepMins"] = String(config.sleepMins);
+  configDoc["touchThreshold"] = String(config.touchThreshold);
+  configDoc["touchEnabled"] = String(config.touchEnabled);
+  configDoc["maxDistance"] = String(config.maxDistance);
+  configDoc["maxDelay"] = String(config.maxDelay);
+  configDoc["timeZoneOffset"] = String(config.timeZoneOffset);
+  configDoc["ftpEnabled"] = String(config.ftpEnabled);
+}
+
 // Saves the configuration to a file
 void saveConfiguration(fs::FS &fs, const char * path, const Config &config) {
   deleteFile(SPIFFS, path);
@@ -437,36 +438,40 @@ void saveConfiguration(fs::FS &fs, const char * path, const Config &config) {
     Serial.println(F("Failed to open file for writing."));
     return;
   }
-  StaticJsonDocument<CONFIG_JSON_DOCSIZE> doc;
-  doc["asAP"] = String(config.asAP);
-  doc["clientSSID"] = config.clientSSID;
-  doc["clientPasswd"] = config.clientPasswd;
-  doc["deviceName"] = config.deviceName;
-  doc["apPasswd"] = config.apPasswd;
-  doc["gpsPollSec"] = String(config.gpsPollSec);
-  doc["targetReached"] = String(config.targetReached);  
-  doc["compPollMs"] = String(config.compPollMs);
-  doc["compOffset"] = String(config.compOffset);
-  doc["HOME_LAT"] = String(config.HOME_LAT,6);
-  doc["HOME_LON"] = String(config.HOME_LON,6);
-  doc["WAYPOINT_LAT"] = String(config.WAYPOINT_LAT,6);
-  doc["WAYPOINT_LON"] = String(config.WAYPOINT_LON,6);  
-  doc["declAngleRad"] = String(config.declAngleRad,14);
-  doc["sleepMins"] = String(config.sleepMins);
-  doc["touchThreshold"] = String(config.touchThreshold);
-  doc["touchEnabled"] = String(config.touchEnabled);
-  doc["debugHaptic"] = String(config.debugHaptic);
-  doc["maxDistance"] = String(config.maxDistance);
-  doc["maxDelay"] = String(config.maxDelay);
-  doc["timeZoneOffset"] = String(config.timeZoneOffset);
-  doc["debug2Serial"] = String(config.debug2Serial);
-  doc["debugData2Serial"] = String(config.debugData2Serial);  
-  doc["debug2Telnet"] = String(config.debug2Telnet);
-  doc["ftpEnabled"] = String(config.ftpEnabled);
-  if (serializeJson(doc, file) == 0) {
+  saveConfigDataToJSON();
+  if (serializeJson(configDoc, file) == 0) {
     Serial.println(F("Failed to write to file"));
   }
   file.close();
+}
+
+void putJSONConfigDataInMemory(){
+  config.asAP = configDoc["asAP"].as<int>();
+  String tempClientSSID = configDoc["clientSSID"];
+  tempClientSSID.toCharArray(config.clientSSID, 16);
+  String tempClientPasswd = configDoc["clientPasswd"];
+  tempClientPasswd.toCharArray(config.clientPasswd, 16);
+  config.connectionTimeOut = configDoc["connectionTimeOut"].as<int>();
+  String tempDeviceName = configDoc["deviceName"];
+  tempDeviceName.toCharArray(config.deviceName, 16);
+  String tempApPasswd = configDoc["apPasswd"];
+  tempApPasswd.toCharArray(config.apPasswd, 16);
+  config.gpsPollSec = configDoc["gpsPollSec"].as<float>();
+  config.targetReached = configDoc["targetReached"].as<int>();
+  config.compPollMs = configDoc["compPollMs"].as<float>();
+  config.compOffset = configDoc["compOffset"].as<float>();
+  config.HOME_LAT = configDoc["HOME_LAT"].as<float>();
+  config.HOME_LON = configDoc["HOME_LON"].as<float>();
+  config.WAYPOINT_LAT = configDoc["WAYPOINT_LAT"].as<float>();
+  config.WAYPOINT_LON = configDoc["WAYPOINT_LON"].as<float>();  
+  config.declAngleRad = configDoc["declAngleRad"].as<double>();
+  config.sleepMins = configDoc["sleepMins"].as<int>();
+  config.touchThreshold = configDoc["touchThreshold"].as<int>();  
+  config.touchEnabled = configDoc["touchEnabled"].as<int>();  
+  config.maxDistance = configDoc["maxDistance"].as<int>();
+  config.maxDelay = configDoc["maxDelay"].as<int>();
+  config.timeZoneOffset = configDoc["timeZoneOffset"].as<int>();
+  config.ftpEnabled = configDoc["ftpEnabled"].as<int>();
 }
 
 void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
@@ -474,108 +479,229 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
   Serial.println(path);
   File file = fs.open(path, FILE_READ);
   delay(100);
-  StaticJsonDocument<CONFIG_JSON_DOCSIZE> doc;
-  DeserializationError error = deserializeJson(doc, file);
+  DeserializationError error = deserializeJson(configDoc, file);
   if (error){
     Serial.println(F("Failed to read file, using default configuration"));
     Serial.println(error.c_str());
     saveConfiguration(SPIFFS, filename, config);
   }else{
-
-  config.asAP = doc["asAP"].as<int>();
-  String tempClientSSID = doc["clientSSID"];
-  tempClientSSID.toCharArray(config.clientSSID, 16);
-  String tempClientPasswd = doc["clientPasswd"];
-  tempClientPasswd.toCharArray(config.clientPasswd, 16);
-  String tempDeviceName = doc["deviceName"];
-  tempDeviceName.toCharArray(config.deviceName, 16);
-  String tempApPasswd = doc["apPasswd"];
-  tempApPasswd.toCharArray(config.apPasswd, 16);
-  config.gpsPollSec = doc["gpsPollSec"].as<float>();
-  config.targetReached = doc["gpsTargetReached"].as<int>();
-  config.compPollMs = doc["compPollMs"].as<float>();
-  config.compOffset = doc["compOffset"].as<float>();
-  config.HOME_LAT = doc["HOME_LAT"].as<float>();
-  config.HOME_LON = doc["HOME_LON"].as<float>();
-  config.WAYPOINT_LAT = doc["WAYPOINT_LAT"].as<float>();
-  config.WAYPOINT_LON = doc["WAYPOINT_LON"].as<float>();  
-  config.declAngleRad = doc["declAngleRad"].as<double>();
-  config.sleepMins = doc["sleepMins"].as<int>();
-  config.touchThreshold = doc["touchThreshold"].as<int>();  
-  config.touchEnabled = doc["touchEnabled"].as<int>();  
-  config.debugHaptic = doc["debugHaptic"].as<int>();  
-  config.maxDistance = doc["maxDistance"].as<int>();
-  config.maxDelay = doc["maxDelay"].as<int>();
-  config.timeZoneOffset = doc["timeZoneOffset"].as<int>();
-  config.debug2Serial = doc["debug2Serial"].as<int>();
-  config.debugData2Serial = doc["debugData2Serial"].as<int>(); 
-  config.debug2Telnet = doc["debug2Telnet"].as<int>(); 
-  config.ftpEnabled = doc["ftpEnabled"].as<int>();
+  putJSONConfigDataInMemory();
   file.close();
   }
 }
 
+  void saveCalibrationDataToJSON(){
+  calDataDoc["magBiasX"] = String(caldata.magBiasX,6);
+  calDataDoc["magBiasY"] = String(caldata.magBiasY,6);
+  calDataDoc["magBiasZ"] = String(caldata.magBiasZ,6);  
+  calDataDoc["magScaleFacX"] = String(caldata.magScaleFacX,6);
+  calDataDoc["magScaleFacY"] = String(caldata.magScaleFacY,6);
+  calDataDoc["magScaleFacZ"] = String(caldata.magScaleFacZ,6);  
+  calDataDoc["gyroBiasX"] = String(caldata.gyroBiasX,6);
+  calDataDoc["gyroBiasY"] = String(caldata.gyroBiasY,6);
+  calDataDoc["gyroBiasZ"] = String(caldata.gyroBiasZ,6);
+  calDataDoc["accelBiasX"] = String(caldata.accelBiasX,6);
+  calDataDoc["accelBiasY"] = String(caldata.accelBiasY,6);
+  calDataDoc["accelBiasZ"] = String(caldata.accelBiasZ,6);
+  calDataDoc["accelScaleX"] = String(caldata.accelScaleX,6);
+  calDataDoc["accelScaleY"] = String(caldata.accelScaleY,6);
+  calDataDoc["accelScaleZ"] = String(caldata.accelScaleZ,6);
+  }
+
 // Saves the configuration to a file
 void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) {
   deleteFile(SPIFFS, path);
+  Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
     Serial.println(F("Failed to create file"));
     return;
   }
-
-  StaticJsonDocument<CALDATA_JSON_DOCSIZE> doc;
-  doc["magBiasX"] = String(caldata.magBiasX,6);
-  doc["magBiasY"] = String(caldata.magBiasY,6);
-  doc["magBiasZ"] = String(caldata.magBiasZ,6);  
-  doc["magScaleFacX"] = String(caldata.magScaleFacX,6);
-  doc["magScaleFacY"] = String(caldata.magScaleFacY,6);
-  doc["magScaleFacZ"] = String(caldata.magScaleFacZ,6);  
-  doc["gyroBiasX"] = String(caldata.gyroBiasX,6);
-  doc["gyroBiasY"] = String(caldata.gyroBiasY,6);
-  doc["gyroBiasZ"] = String(caldata.gyroBiasZ,6);
-  doc["accelBiasX"] = String(caldata.accelBiasX,6);
-  doc["accelBiasY"] = String(caldata.accelBiasY,6);
-  doc["accelBiasZ"] = String(caldata.accelBiasZ,6);
-  doc["accelScaleX"] = String(caldata.accelScaleX,6);
-  doc["accelScaleY"] = String(caldata.accelScaleY,6);
-  doc["accelScaleZ"] = String(caldata.accelScaleZ,6);
-  if (serializeJson(doc, file) == 0) {
+  saveCalibrationDataToJSON();
+  if (serializeJson(calDataDoc, file) == 0) {
     Serial.println(F("Failed to write to file"));
+  }else{
+    Serial.println(F("New file written"));
   }
   file.close();
 }
 
+void putJSONCalibrationDataInMemory() {
+  caldata.magBiasX = calDataDoc["magBiasX"].as<float>();
+  caldata.magBiasY = calDataDoc["magBiasY"].as<float>();
+  caldata.magBiasZ = calDataDoc["magBiasZ"].as<float>();  
+  caldata.magScaleFacX = calDataDoc["magScaleFacX"].as<float>();
+  caldata.magScaleFacY = calDataDoc["magScaleFacY"].as<float>();
+  caldata.magScaleFacZ = calDataDoc["magScaleFacZ"].as<float>();    
+  caldata.gyroBiasX = calDataDoc["gyroBiasX"].as<float>();
+  caldata.gyroBiasY = calDataDoc["gyroBiasY"].as<float>();
+  caldata.gyroBiasZ = calDataDoc["gyroBiasZ"].as<float>();
+  caldata.accelBiasX = calDataDoc["accelBiasX"].as<float>();
+  caldata.accelBiasY = calDataDoc["accelBiasY"].as<float>();
+  caldata.accelBiasZ = calDataDoc["accelBiasZ"].as<float>();    
+  caldata.accelScaleX = calDataDoc["accelScaleX"].as<float>();    
+  caldata.accelScaleY = calDataDoc["accelScaleY"].as<float>();    
+  caldata.accelScaleZ = calDataDoc["accelScaleZ"].as<float>();  
+}
+
 // Loads the calibration data from a file
 void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &caldata) {
+  Serial.println(F("Loading calibration data..."));
   File file = fs.open(path, FILE_READ);
   delay(10);
-  StaticJsonDocument<CALDATA_JSON_DOCSIZE> doc;
-  DeserializationError error = deserializeJson(doc, file);
+  DeserializationError error = deserializeJson(calDataDoc, file);
 
   if (error){
-    Serial.println(F("Failed to read file, using default configuration"));
+    Serial.println(F("Failed to read file, using default calibration data."));
     Serial.println(error.c_str());
-    saveCalibrationData(SPIFFS, filename_cal, caldata);
+    saveCalibrationData(SPIFFS, path, caldata);
   }else{
-  
-  caldata.magBiasX = doc["magBiasX"].as<float>();
-  caldata.magBiasY = doc["magBiasY"].as<float>();
-  caldata.magBiasZ = doc["magBiasZ"].as<float>();  
-  caldata.magScaleFacX = doc["magScaleFacX"].as<float>();
-  caldata.magScaleFacY = doc["magScaleFacY"].as<float>();
-  caldata.magScaleFacZ = doc["magScaleFacZ"].as<float>();    
-  caldata.gyroBiasX = doc["gyroBiasX"].as<float>();
-  caldata.gyroBiasY = doc["gyroBiasY"].as<float>();
-  caldata.gyroBiasZ = doc["gyroBiasZ"].as<float>();
-  caldata.accelBiasX = doc["accelBiasX"].as<float>();
-  caldata.accelBiasY = doc["accelBiasY"].as<float>();
-  caldata.accelBiasZ = doc["accelBiasZ"].as<float>();    
-  caldata.accelScaleX = doc["accelScaleX"].as<float>();    
-  caldata.accelScaleY = doc["accelScaleY"].as<float>();    
-  caldata.accelScaleZ = doc["accelScaleZ"].as<float>();    
+  putJSONCalibrationDataInMemory();
   file.close();
   }
+}
+
+ void saveDebugSettingsToJSON() {
+  debugSettingsDoc["debugHaptic"] = String(debugSettings.debugHaptic);
+  debugSettingsDoc["debug2Serial"] = String(debugSettings.debug2Serial);
+  debugSettingsDoc["debugData2Serial"] = String(debugSettings.debugData2Serial);  
+  debugSettingsDoc["debug2Telnet"] = String(debugSettings.debug2Telnet);
+}
+
+// Saves the configuration to a file
+void saveDebugSettings(fs::FS &fs, const char * path, const DebugSettings &debugSettings) {
+  deleteFile(SPIFFS, path);
+  Serial.println(path);
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.println(F("Failed to create file"));
+    return;
+  }
+  saveDebugSettingsToJSON();
+  if (serializeJson(debugSettingsDoc, file) == 0) {
+    Serial.println(F("Failed to write to file"));
+  }else{
+    Serial.println(F("New file written"));
+  }
+  file.close();
+}
+
+void putJSONDebugSettingsInMemory() {
+  debugSettings.debugHaptic = debugSettingsDoc["debugHaptic"].as<int>();  
+  debugSettings.debug2Serial = debugSettingsDoc["debug2Serial"].as<int>();
+  debugSettings.debugData2Serial = debugSettingsDoc["debugData2Serial"].as<int>(); 
+  debugSettings.debug2Telnet = debugSettingsDoc["debug2Telnet"].as<int>(); 
+}
+
+// Loads the debug settings from a file
+void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &debugSettings) {
+  Serial.println(F("Loading debug settings..."));
+  File file = fs.open(path, FILE_READ);
+  delay(10);
+  DeserializationError error = deserializeJson(debugSettingsDoc, file);
+
+  if (error){
+    Serial.println(F("Failed to read file, using default debug settings."));
+    Serial.println(error.c_str());
+    saveDebugSettings(SPIFFS, path, debugSettings);
+  }else{
+  putJSONDebugSettingsInMemory();
+  file.close();
+  }
+}
+
+void printConfigInMemory(){
+  Serial.print("As Accesspoint: ");
+  Serial.println(config.asAP);
+  Serial.print("Client to SSID: ");
+  Serial.println(config.clientSSID);
+  Serial.print("Client Password: ");
+  Serial.println(config.clientPasswd);
+  Serial.print("Connection Timeout: ");
+  Serial.println(config.connectionTimeOut);
+  Serial.print("Devicename: ");
+  Serial.println(config.deviceName);
+  Serial.print("Device password: ");
+  Serial.println(config.apPasswd);
+  Serial.print("GPS polling(s): ");
+  Serial.println(config.gpsPollSec);
+  Serial.print("Target reached: ");
+  Serial.println(config.targetReached);
+  Serial.print("Compass polling(ms): ");
+  Serial.println(config.compPollMs);
+  Serial.print("Compass offset(deg): ");
+  Serial.println(config.compOffset);
+  Serial.print("Homebase(lat): ");
+  Serial.println(config.HOME_LAT,6);
+  Serial.print("Homebase(lon):" );
+  Serial.println(config.HOME_LON,6);
+  Serial.print("Waypoint(lat): ");
+  Serial.println(config.WAYPOINT_LAT,6);
+  Serial.print("Waypoint(lon):" );
+  Serial.println(config.WAYPOINT_LON,6);  
+  Serial.print("Declanation angle(rads): ");
+  Serial.println(config.declAngleRad,12);
+  Serial.print("Sleeptime(mins): ");
+  Serial.println(config.sleepMins);
+  Serial.print("Threshold touch: ");
+  Serial.println(config.touchThreshold);
+  Serial.print("Enable touch: ");
+  Serial.println(config.touchEnabled);
+  Serial.print("Timezone offset: ");
+  Serial.println(config.timeZoneOffset);
+  Serial.print("Pulsed max distance: ");
+  Serial.println(config.maxDistance);
+  Serial.print("Max Delay between pulses: ");
+  Serial.println(config.maxDelay);
+
+  Serial.print("FTP Enabled: ");
+  Serial.println(config.ftpEnabled);  
+  bDumpConfig = 0;
+  Serial.println(); 
+}
+
+void printCalDataInMemory(){
+  Serial.print("magBiasX: ");
+  Serial.println(caldata.magBiasX,6);
+  Serial.print("magBiasY: ");
+  Serial.println(caldata.magBiasY,6);
+  Serial.print("magBiasZ: ");
+  Serial.println(caldata.magBiasZ,6);
+  Serial.print("magScaleFacX: ");
+  Serial.println(caldata.magScaleFacX,6);
+  Serial.print("magScaleFacY: ");
+  Serial.println(caldata.magScaleFacY,6);
+  Serial.print("magScaleFacZ: ");
+  Serial.println(caldata.magScaleFacZ,6);
+  Serial.print("gyroBiasX: ");
+  Serial.println(caldata.gyroBiasX,6);
+  Serial.print("gyroBiasY: ");
+  Serial.println(caldata.gyroBiasY,6);
+  Serial.print("gyroBiasZ: ");
+  Serial.println(caldata.gyroBiasZ,6);
+  Serial.print("accelBiasX: ");
+  Serial.println(caldata.accelBiasX,6);
+  Serial.print("accelBiasY: ");
+  Serial.println(caldata.accelBiasY,6);
+  Serial.print("accelBiasZ:" );
+  Serial.println(caldata.accelBiasZ,6);
+  Serial.print("accelScaleX: ");
+  Serial.println(caldata.accelScaleX,6);
+  Serial.print("accelScaleY:" );
+  Serial.println(caldata.accelScaleY,6);  
+  Serial.print("accelScaleZ: ");
+  Serial.println(caldata.accelScaleZ,6);
+  bDumpConfig = 0;
+  Serial.println(); 
+}
+
+void printDebugSettingsInMemory(){
+  Serial.print("Debug2Serial: ");
+  Serial.println(debugSettings.debug2Serial);  
+  Serial.print("Debug RAW GPS to telnet: ");
+  Serial.println(debugSettings.debugData2Serial);
+  Serial.print("Haptic feedback Debug: ");
+  Serial.println(debugSettings.debugHaptic);
 }
 
 String GetGPSTime(){
@@ -724,17 +850,50 @@ static void printLines(unsigned long distance2Waypoint, float course2Waypoint, f
 }
 
 void webServerSetup(){
-
 // Webserver setup responses
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(SPIFFS, "/index.html", String(), false, processor);
       timerRestart(timer2);
-      if(config.debug2Serial){
+      if(debugSettings.debug2Serial){
         Serial.println("index called");
       }
     }
   );
+
+  webServer.onRequestBody(
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+        {
+            if ((request->url() == "/settings/settings_form") && (request->method() == HTTP_POST))
+            {
+                if (DeserializationError::Ok == deserializeJson(configDoc, (const char*)data))
+                {
+                    JsonObject obj = configDoc.as<JsonObject>();
+                    putJSONConfigDataInMemory();
+                    saveConfiguration(SPIFFS, filename, config);
+                }
+                request->send(200, "application/json", "{ \"status\": 0 }");
+            } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
+            {
+                if (DeserializationError::Ok == deserializeJson(calDataDoc, (const char*)data))
+                {
+                    JsonObject obj = calDataDoc.as<JsonObject>();
+                    putJSONConfigDataInMemory();
+                    saveCalibrationData(SPIFFS, filename_cal, caldata);
+                }
+                request->send(200, "application/json", "{ \"status\": 0 }");
+            } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
+            {
+                if (DeserializationError::Ok == deserializeJson(debugSettingsDoc, (const char*)data))
+                {
+                    JsonObject obj = debugSettingsDoc.as<JsonObject>();
+                    putJSONDebugSettingsInMemory();
+                    saveDebugSettings(SPIFFS, filename_debug, debugSettings);
+                }
+                request->send(200, "application/json", "{ \"status\": 0 }");
+            }
+        }
+    );
 
   webServer.on(fileCss.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -766,6 +925,25 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/caldata.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/caldata.json", "application/json");
+    }
+  );
+
+    webServer.on("/debug.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/debug.json", "application/json");
+    }
+  );
+
+  webServer.on("/getConfigToSerial", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      printConfigInMemory();
+      request->send(200, "application/json", "{ \"status\": 0 }");
+    }
+  );
+
   webServer.on("/map1.jpg", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(SPIFFS, "/map1.jpg", "image/jpeg");
@@ -778,97 +956,17 @@ void webServerSetup(){
     }
   );
 
-// Send a GET request to <ESP_IP>/get?input1=<inputMessage> set.html?lat=123.456&lon=78.90  setlatlong?lat=123.456&lon=78.90
-webServer.on("/setlatlon", HTTP_GET, [] (AsyncWebServerRequest *request)
-  {
-    if (request->hasParam(PARAM_LAT)) {
-      inputLat = request->getParam(PARAM_LAT)->value();
-      inputLon = request->getParam(PARAM_LON)->value();
+    webServer.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/favicon.ico", "image/ico");  
     }
-    else {
-      inputLat = "0.0";
-      inputLon = "0.0";
-    }
-    flCurrentLat = gps.location.lat();
-    flCurrentLon = gps.location.lng();
-    config.WAYPOINT_LAT = inputLat.toFloat();
-    config.WAYPOINT_LON = inputLon.toFloat();    
-    distancewaypoint = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-    coarsewaypoint = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-    cardinalToWaypoint = TinyGPSPlus::cardinal(coarsewaypoint);
-    if(config.debug2Serial){
-      Serial.println("WP Set");
-      Serial.println(config.WAYPOINT_LAT,6);
-      Serial.println(config.WAYPOINT_LON,6);
-    }    
-    saveConfiguration(SPIFFS, filename, config);    
-    request->send(SPIFFS, "/areamap.html", String(), false);
-    timerRestart(timer2);    
-  }
-);
+  );
 
-webServer.on("/setlatlon_home", HTTP_GET, [] (AsyncWebServerRequest *request){
-    flCurrentLat = gps.location.lat();
-    flCurrentLon = gps.location.lng();
-    config.HOME_LAT = flCurrentLat;
-    config.HOME_LON = flCurrentLon;
-    coarse2home = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
-    distance2home = distance2waypoint(config.HOME_LAT, config.HOME_LON);
-    cardinal2home = TinyGPSPlus::cardinal(coarse2home);
-    nrsatt = gps.satellites.value();
-    if(config.debug2Serial){
-      Serial.println("Home Set");
-      Serial.println(config.HOME_LAT,6);
-      Serial.println(config.HOME_LON,6);
-    }
-    saveConfiguration(SPIFFS, filename, config);
-    request->send(SPIFFS, "/areamap.html", String(), false);
-    timerRestart(timer2);    
-  });    
-  
-webServer.on( "/", HTTP_POST, []( AsyncWebServerRequest * request )
-  {
-    if ( request->authenticate( config.http_username, config.http_password ) )
+    webServer.on("/logo192.png", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send( 200 );
+      request->send(SPIFFS, "/logo192.png", "image/png");  
     }
-    else
-    {
-      request->requestAuthentication();
-    }
-  },
-  []( AsyncWebServerRequest * request, String filename, size_t index, uint8_t *data, size_t len, bool final )
-  {
-    static bool   _authenticated;
-    static time_t startTimer;
-    if ( !index )
-    {
-      _authenticated = false;
-      if ( request->authenticate(config.http_username, config.http_password) )
-      {
-        startTimer = millis();
-        Serial.printf( "UPLOAD: Started to receive '%s'.\n", filename.c_str() );
-        _authenticated = true;
-      }
-      else
-      {
-        Serial.println( "Unauthorized access." );
-        return request->send( 401, "text/plain", "Not logged in." );
-      }      
-    }
-
-    if ( _authenticated )
-    {
-      //Serial.printf( "%i bytes received.\n", index );
-      //Store or do something with the data...
-    }
-
-
-    if ( final && _authenticated )
-    {
-      Serial.printf( "UPLOAD: Done. Received %.2f kBytes in %.2fs which is %i kB/s.\n", index / 1024.0, ( millis() - startTimer ) / 1000.0, index / ( millis() - startTimer ) );
-    }
-  });
+  );
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
      {
@@ -876,9 +974,11 @@ webServer.on( "/", HTTP_POST, []( AsyncWebServerRequest * request )
       //timerRestart(timer2);
       Serial.println("redirect called");
     });
+  
+ 
   webServer.begin();
-  Serial.println("HTTP Started on port: ");
-  Serial.print(config.http_port);
+  Serial.print("HTTP Started on port: ");
+  Serial.println(config.http_port);
 }
 
 void setup(){
@@ -886,14 +986,6 @@ void setup(){
   Serial.begin(SerialUSBBaud);
   Serial2.begin(GPSBaud);
   delay(1000);
-
-// EEPROM setup  
-  // if (!EEPROM.begin(1000)){
-  //   Serial.println("Failed to initialise EEPROM");
-  //   Serial.println("Restarting...");
-  //   delay(1000);
-  //   ESP.restart();
-  // }
 
   // Initialize SPIFFS
   if(!SPIFFS.begin(true)){
@@ -905,7 +997,8 @@ void setup(){
 
   Serial.println();
   delay(1000);
-  loadConfiguration(SPIFFS, filename, config);  
+  loadConfiguration(SPIFFS, filename, config);
+  loadDebugSettings(SPIFFS, filename_debug, debugSettings);  
   
   Serial.println();
   Serial.print("HaptiCap version: ");
@@ -1013,13 +1106,12 @@ void setup(){
     gps.encode(Serial2.read());  
   }
 
+loadCalibrationData(SPIFFS, filename_cal, caldata);
+delay(1000);
 getInitialReadings();
 timerAlarmEnable(timer0);
 timerAlarmEnable(timer1);
 timerAlarmEnable(timer2);
-Serial.print("HaptiCap ready @ ");
-GPSTime = GetGPSTime();
-Serial.println(GPSTime);
 
 if(!config.asAP){
   Serial.print("IP address: ");
@@ -1030,7 +1122,13 @@ if(!config.asAP){
     Serial.println(config.dns_port);
   }
 
- webServerSetup();  
+webServerSetup();
+
+Serial.print("HaptiCap ready @ ");
+delay(1000);
+GPSTime = GetGPSTime();
+Serial.println(GPSTime);
+Serial.println();   
 }
  
 void loop(){

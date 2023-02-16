@@ -1,0 +1,17 @@
+{
+    "magBiasX": "0.000000",
+    "magBiasY": "0.000000",
+    "magBiasZ": "0.000000",
+    "magScaleFacX": "1.000000",
+    "magScaleFacY": "1.000000",
+    "magScaleFacZ": "1.000000",
+    "gyroBiasX": "0.000000",
+    "gyroBiasY": "0.000000",
+    "gyroBiasZ": "0.000000",
+    "accelBiasX": "0.000000",
+    "accelBiasY": "0.000000",
+    "accelBiasZ": "0.000000",
+    "accelScaleX": "1.000000",
+    "accelScaleY": "1.000000",
+    "accelScaleZ": "1.000000"
+}
