@@ -1,6 +1,5 @@
 #include <Arduino.h>
 
-
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
 #include <DNSServer.h>
@@ -33,7 +32,7 @@ void loop();
 struct Config {
   uint8_t http_port = 80;
   uint8_t dns_port = 53;
-  bool asAP = 0;
+  bool asAP = false;
   char clientSSID[16] = "TrizNet_AP2";
   char clientPasswd[16] = "T0sh7b49";
   int connectionTimeOut = 120;
@@ -55,8 +54,8 @@ struct Config {
   unsigned long sleepMins = 5;                // Timer2 tick set to 1 min (1 * 60000 = 250 ms)  sleep
   int touchThreshold = 50;
   int timeZoneOffset = 1;                      // +1 hour
-  bool touchEnabled = 1;
-  bool ftpEnabled = 0;
+  bool touchEnabled = true;
+  bool ftpEnabled = false;
 };
 
 // _CalData_
@@ -79,10 +78,10 @@ struct CalData {
 };
 
 struct DebugSettings {
-  bool debugHaptic = 0;
-  bool debug2Telnet = 0;
-  bool debug2Serial = 0;
-  bool debugData2Serial = 0;
+  bool debugHaptic = false;
+  bool debug2Telnet = false;
+  bool debug2Serial = false;
+  bool debugData2Serial = false;
 };
 
 Config config;                         // <- global configuration object
@@ -144,7 +143,7 @@ int pwm_front = 0;
 int pwm_right = 0;
 int pwm_rear = 0;
 int pwm_left = 0;
-bool bPrintHeader = 0;
+bool bPrintHeader = false;
 int count = 0;
 int i = 0;
 
@@ -179,6 +178,8 @@ float coarse2home = 0;
 int nrsatt = 0;
 float b = (255.0/90.0);   // 256/90 pwm scaled to 90 degrees (quadrant)
 
+String ipAddress;
+String hostAddress;
 String GPSTime;
 int hours;
 int mins;
@@ -312,6 +313,9 @@ String processor(const String& var){
      }else if (var == "CSSFILE"){
           str2HTML = fileCss;
           return str2HTML; 
+     }else if (var == "HOSTADDRESS"){
+          str2HTML = hostAddress;
+          return str2HTML; 
      }
     return String();
 }
@@ -406,7 +410,7 @@ void deleteFile(fs::FS &fs, const char * path){
 }
 
 void saveConfigDataToJSON(){
-  configDoc["asAP"] = String(config.asAP);
+  configDoc["asAP"] = config.asAP;
   configDoc["clientSSID"] = config.clientSSID;
   configDoc["clientPasswd"] = config.clientPasswd;
   configDoc["connectionTimeOut"] = config.connectionTimeOut;
@@ -423,11 +427,11 @@ void saveConfigDataToJSON(){
   configDoc["declAngleRad"] = String(config.declAngleRad,14);
   configDoc["sleepMins"] = String(config.sleepMins);
   configDoc["touchThreshold"] = String(config.touchThreshold);
-  configDoc["touchEnabled"] = String(config.touchEnabled);
+  configDoc["touchEnabled"] = config.touchEnabled;
   configDoc["maxDistance"] = String(config.maxDistance);
   configDoc["maxDelay"] = String(config.maxDelay);
   configDoc["timeZoneOffset"] = String(config.timeZoneOffset);
-  configDoc["ftpEnabled"] = String(config.ftpEnabled);
+  configDoc["ftpEnabled"] = config.ftpEnabled;
 }
 
 // Saves the configuration to a file
@@ -441,12 +445,14 @@ void saveConfiguration(fs::FS &fs, const char * path, const Config &config) {
   saveConfigDataToJSON();
   if (serializeJson(configDoc, file) == 0) {
     Serial.println(F("Failed to write to file"));
+  }else{
+    Serial.println(F("New file written"));
   }
   file.close();
 }
 
 void putJSONConfigDataInMemory(){
-  config.asAP = configDoc["asAP"].as<int>();
+  config.asAP = configDoc["asAP"].as<bool>();
   String tempClientSSID = configDoc["clientSSID"];
   tempClientSSID.toCharArray(config.clientSSID, 16);
   String tempClientPasswd = configDoc["clientPasswd"];
@@ -467,11 +473,11 @@ void putJSONConfigDataInMemory(){
   config.declAngleRad = configDoc["declAngleRad"].as<double>();
   config.sleepMins = configDoc["sleepMins"].as<int>();
   config.touchThreshold = configDoc["touchThreshold"].as<int>();  
-  config.touchEnabled = configDoc["touchEnabled"].as<int>();  
+  config.touchEnabled = configDoc["touchEnabled"].as<bool>();  
   config.maxDistance = configDoc["maxDistance"].as<int>();
   config.maxDelay = configDoc["maxDelay"].as<int>();
   config.timeZoneOffset = configDoc["timeZoneOffset"].as<int>();
-  config.ftpEnabled = configDoc["ftpEnabled"].as<int>();
+  config.ftpEnabled = configDoc["ftpEnabled"].as<bool>();
 }
 
 void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
@@ -562,10 +568,10 @@ void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &calda
 }
 
  void saveDebugSettingsToJSON() {
-  debugSettingsDoc["debugHaptic"] = String(debugSettings.debugHaptic);
-  debugSettingsDoc["debug2Serial"] = String(debugSettings.debug2Serial);
-  debugSettingsDoc["debugData2Serial"] = String(debugSettings.debugData2Serial);  
-  debugSettingsDoc["debug2Telnet"] = String(debugSettings.debug2Telnet);
+  debugSettingsDoc["debugHaptic"] = debugSettings.debugHaptic;
+  debugSettingsDoc["debug2Serial"] = debugSettings.debug2Serial;
+  debugSettingsDoc["debugData2Serial"] = debugSettings.debugData2Serial;  
+  debugSettingsDoc["debug2Telnet"] = debugSettings.debug2Telnet;
 }
 
 // Saves the configuration to a file
@@ -853,11 +859,23 @@ void webServerSetup(){
 // Webserver setup responses
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
+      if(!config.ftpEnabled){
       request->send(SPIFFS, "/index.html", String(), false, processor);
       timerRestart(timer2);
       if(debugSettings.debug2Serial){
         Serial.println("index called");
       }
+      } else{
+        request->send(SPIFFS, "/ftpmode.html", String(), false, processor);
+      }
+
+    }
+  );
+
+    webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      saveConfiguration(SPIFFS, filename, config);
+      esp_restart();
     }
   );
 
@@ -871,6 +889,11 @@ void webServerSetup(){
                     JsonObject obj = configDoc.as<JsonObject>();
                     putJSONConfigDataInMemory();
                     saveConfiguration(SPIFFS, filename, config);
+                    printConfigInMemory();
+                    if(config.asAP){
+                      delay(1000);
+                      esp_restart();
+                    }
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
@@ -878,7 +901,7 @@ void webServerSetup(){
                 if (DeserializationError::Ok == deserializeJson(calDataDoc, (const char*)data))
                 {
                     JsonObject obj = calDataDoc.as<JsonObject>();
-                    putJSONConfigDataInMemory();
+                    putJSONCalibrationDataInMemory();
                     saveCalibrationData(SPIFFS, filename_cal, caldata);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
@@ -910,12 +933,14 @@ void webServerSetup(){
   webServer.on(fileJs.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(SPIFFS, fileJs.c_str(), "application/javascript");
+      //request->send(SPIFFS, fileJs.c_str(), String(), false, processor);
     }
   );
 
   webServer.on(fileJsMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(SPIFFS, fileJsMap.c_str(), "application/javascript");
+      //request->send(SPIFFS, fileJsMap.c_str(), String(), false, processor);
     }
   );
 
@@ -971,11 +996,40 @@ void webServerSetup(){
   webServer.onNotFound( []( AsyncWebServerRequest * request )
      {
       request->send(SPIFFS, "/redirect.html", String(), false, processor);
-      //timerRestart(timer2);
+      timerRestart(timer2);
       Serial.println("redirect called");
     });
   
  
+  webServer.begin();
+  Serial.print("HTTP Started on port: ");
+  Serial.println(config.http_port);
+}
+
+void webServerSetupFTP(){
+  // Webserver setup responses
+  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      if(!config.ftpEnabled){
+      request->send(SPIFFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+      if(debugSettings.debug2Serial){
+        Serial.println("index called");
+      }
+      } else{
+        request->send(SPIFFS, "/ftpmode.html", String(), false, processor);
+      }
+
+    }
+  );
+
+    webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      saveConfiguration(SPIFFS, filename, config);
+      delay(1000);
+      esp_restart();
+    }
+  );
   webServer.begin();
   Serial.print("HTTP Started on port: ");
   Serial.println(config.http_port);
@@ -1042,6 +1096,7 @@ void setup(){
   delay(500);
   // Connect to Wi-Fi network with SSID and password
   if (config.asAP) {
+      delay(1000);
       WiFi.mode( WIFI_MODE_APSTA );
       IPAddress ip( 192, 168, 1, 1 );
       IPAddress gateway( 192, 168, 1, 1 );
@@ -1078,7 +1133,9 @@ void setup(){
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(config.clientSSID);
-
+    IPAddress IP = WiFi.localIP();
+    ipAddress = IP.toString();
+    hostAddress = "http://" + ipAddress;
   }
  
   Serial.println("");
@@ -1115,27 +1172,43 @@ timerAlarmEnable(timer2);
 
 if(!config.asAP){
   Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println(ipAddress);
+  Serial.print("Host address: ");
+  Serial.println(hostAddress);
   }else{
     dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
-    Serial.println("DNS Started on port.");
+    Serial.print("DNS Started on port.");
     Serial.println(config.dns_port);
   }
 
-webServerSetup();
+  if(config.ftpEnabled){
+    Serial.println("FTP started.");
+    //webServerSetupFTP();
+    config.ftpEnabled = false;
+    saveConfiguration(SPIFFS, filename, config);
+    delay(1000);
+    config.ftpEnabled = true;
+    ftpSrv.begin(config.deviceName,config.apPasswd);
+  }else{
+    webServerSetup();
+  }
 
-Serial.print("HaptiCap ready @ ");
 delay(1000);
+Serial.print("HaptiCap ready @ ");
 GPSTime = GetGPSTime();
 Serial.println(GPSTime);
 Serial.println();   
 }
  
 void loop(){
-if(config.asAP){  
-  dnsServer.processNextRequest();
-}
-  if(config.ftpEnabled)
+  if(config.ftpEnabled){
      ftpSrv.handleFTP();
+  } else
+  {
 
+    if(config.asAP){  
+      dnsServer.processNextRequest();
+    }
+
+  }
 }
