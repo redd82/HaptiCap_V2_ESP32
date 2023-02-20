@@ -19,6 +19,7 @@
 #define CONFIG_JSON_DOCSIZE 1024
 #define CALDATA_JSON_DOCSIZE 768
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
+#define GPSDATA_JSON_DOCSIZE 1024
 
 void setup();
 void setupIO();
@@ -84,9 +85,27 @@ struct DebugSettings {
   bool debugData2Serial = false;
 };
 
+struct GPSData {
+  char sensorName[8];
+  int gpsTime;
+  float ownLat;
+  float ownLon;
+  float homeBaseLat;
+  float homeBaseLon;
+  float homeBaseBearing;
+  String homeBaseDirection;
+  float homeBaseDistance;
+  float wayPointBearing;
+  String wayPointDirection;
+  float compassHeading;
+  String compassDirection;
+  int nrOfSatellites;
+};
+
 Config config;                         // <- global configuration object
 CalData caldata;
 DebugSettings debugSettings;
+GPSData gpsData;
 
 // _PARAMS_
 const char* filename = "/hapticap.json";
@@ -180,10 +199,15 @@ float b = (255.0/90.0);   // 256/90 pwm scaled to 90 degrees (quadrant)
 
 String ipAddress;
 String hostAddress;
-String GPSTime;
+String GPSTimeMinsSecs;
+String GPSTimeMins;
+String GPSDate;
 int hours;
 int mins;
 int secs;
+int day;
+int month;
+int year;
 int intCounterWifi = 0;
 bool bUseTimerInterrupt = 1;
 bool bYouRang = 0;
@@ -204,6 +228,7 @@ bool bDebugTgrtReached = 0;
 bool bDebugHomeReached = 0;
 int GPSFix = 0;
 bool GPSFixAccepted = 0;
+bool startup = false;
 
 // ISR's
 void IRAM_ATTR onTimer0(){
@@ -231,6 +256,8 @@ void IRAM_ATTR onTimer2(){
 StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
 StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
 StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
+DynamicJsonDocument GPSDataDoc(GPSDATA_JSON_DOCSIZE);
+
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
 MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
@@ -616,6 +643,81 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
   }
 }
 
+  // char sensorName[8];
+  // int gpsTime;
+  // float ownLat;
+  // float ownLon;
+  // float homeBaseLat;
+  // float homeBaseLon;
+  // float homeBaseBearing;
+  // String homeBaseDirection;
+  // float homeBaseDistance;
+  // float wayPointBearing;
+  // String wayPointDirection;
+  // float compassHeading;
+  // String compassDirection;
+  // int nrOfSatellites;
+
+ void saveGPSDataToJSON() {
+  GPSDataDoc["sensor"] = "gps";
+  GPSDataDoc["time"] = gpsData.gpsTime;
+  GPSDataDoc["ownLat"] = gpsData.ownLat;  
+  GPSDataDoc["ownLon"] = gpsData.ownLon;
+  GPSDataDoc["homeBaseLat"] = gpsData.homeBaseLat;
+  GPSDataDoc["homeBaseLon"] = gpsData.homeBaseLon;
+  GPSDataDoc["homeBaseBearing"] = gpsData.homeBaseBearing;
+  GPSDataDoc["homeBaseDirection"] = gpsData.homeBaseDirection;
+  GPSDataDoc["homeBaseDistance"] = gpsData.homeBaseDistance;
+  GPSDataDoc["wayPointBearing"] = gpsData.wayPointBearing;
+  GPSDataDoc["wayPointDirection"] = gpsData.wayPointDirection;
+  GPSDataDoc["compassHeading"] = gpsData.compassHeading;
+  GPSDataDoc["compassDirection"] = gpsData.compassDirection;
+  GPSDataDoc["nrOfSatellites"] = gpsData.nrOfSatellites;
+}
+
+// Saves the GPS data to a file
+void saveGPSData(fs::FS &fs, const char * path, const GPSData &gpsData) {
+  deleteFile(SPIFFS, path);
+  Serial.println(path);
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.println(F("Failed to create file"));
+    return;
+  }
+  saveGPSDataToJSON();
+  if (serializeJson(GPSDataDoc, file) == 0) {
+    Serial.println(F("Failed to write to file"));
+  }else{
+    Serial.println(F("New file written"));
+  }
+  file.close();
+}
+
+void putJSONGPSDataInMemory() {
+  String tempSensorName = GPSDataDoc["sensor"];
+  tempSensorName.toCharArray(gpsData.sensorName, 8);  
+  gpsData.gpsTime = GPSDataDoc["gpsTime"].as<int>();
+  gpsData.ownLat = GPSDataDoc["ownLat"].as<float>(); 
+  gpsData.ownLon = GPSDataDoc["ownLon"].as<float>(); 
+}
+
+// Loads the debug settings from a file
+void IRAM_ATTR loadGPSData(fs::FS &fs, const char * path, GPSData &gpsData) {
+  Serial.println(F("Loading debug settings..."));
+  File file = fs.open(path, FILE_READ);
+  delay(10);
+  DeserializationError error = deserializeJson(GPSDataDoc, file);
+
+  if (error){
+    Serial.println(F("Failed to read file, using default debug settings."));
+    Serial.println(error.c_str());
+    saveGPSData(SPIFFS, path, gpsData);
+  }else{
+  putJSONGPSDataInMemory();
+  file.close();
+  }
+}
+
 void printConfigInMemory(){
   Serial.print("As Accesspoint: ");
   Serial.println(config.asAP);
@@ -710,28 +812,66 @@ void printDebugSettingsInMemory(){
   Serial.println(debugSettings.debugHaptic);
 }
 
-String GetGPSTime(){
-      if (gps.time.isUpdated()){
+String getGPSTimeMinsSecs(){
+  if(!startup){
+    while(!gps.time.isUpdated()){
+      //Serial.println(".");
+    }
+  }
+    if (gps.time.isUpdated()){
         hours = gps.time.hour() + config.timeZoneOffset;
         mins = gps.time.minute();
         secs = gps.time.second();
       if(hours<10){
-        GPSTime = "0" + String(hours);  
+        GPSTimeMinsSecs = "0" + String(hours);  
       }else{
-         GPSTime = String(hours);  
+         GPSTimeMinsSecs = String(hours);  
         }
       if(mins<10){
-        GPSTime = GPSTime + ":" + "0" + String(mins);
+        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + "0" + String(mins);
       }else{
-        GPSTime = GPSTime + ":" + String(mins);
+        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + String(mins);
         }
       if(secs<10){
-        GPSTime = GPSTime + ":" + "0" + String(secs);      
+        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + "0" + String(secs);      
       }else{
-        GPSTime = GPSTime + ":" + String(secs);
+        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + String(secs);
         }
       }
-      return GPSTime;
+      return GPSTimeMinsSecs;
+}
+
+String getGPSTimeMins(){
+    if (gps.time.isUpdated()){
+        hours = gps.time.hour() + config.timeZoneOffset;
+        mins = gps.time.minute();
+      if(hours<10){
+        GPSTimeMins = "0" + String(hours);  
+      }else{
+         GPSTimeMins = String(hours);  
+        }
+      if(mins<10){
+        GPSTimeMins = GPSTimeMins + ":" + "0" + String(mins);
+      }else{
+        GPSTimeMins = GPSTimeMins + ":" + String(mins);
+        }
+      }
+      return GPSTimeMins;
+}
+
+String getGPSDate(){
+  if(!startup){
+    while(!gps.date.isUpdated()){
+      //Serial.println(".");
+    }
+  }
+      if (gps.date.isUpdated()){
+        day = gps.date.day();
+        month = gps.date.month();
+        year = gps.date.year();
+        GPSDate = String(year) + "-" + String(month) + "-" + String(day);
+      }
+      return GPSDate;
 }
 
 unsigned long distance2waypoint(float waypoint_latt, float waypoint_long){ 
@@ -944,6 +1084,20 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/getGPSTime", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String temp = getGPSTimeMins();
+      request->send(200, "application/json", "{ \"GPSTime\" : \"" + temp + "\" }");
+    }
+  );
+
+  webServer.on("/getGPSDate", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String temp = getGPSDate();
+      request->send(200, "application/json", "{ \"GPSDate\" : \"" + temp + "\" }");
+    }
+  );
+
   webServer.on("/hapticap.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(SPIFFS, "/hapticap.json", "application/json");
@@ -1019,7 +1173,6 @@ void webServerSetupFTP(){
       } else{
         request->send(SPIFFS, "/ftpmode.html", String(), false, processor);
       }
-
     }
   );
 
@@ -1195,20 +1348,47 @@ if(!config.asAP){
 
 delay(1000);
 Serial.print("HaptiCap ready @ ");
-GPSTime = GetGPSTime();
-Serial.println(GPSTime);
-Serial.println();   
+GPSTimeMinsSecs = getGPSTimeMinsSecs();
+GPSDate = getGPSDate();
+Serial.println(GPSTimeMinsSecs + " " + GPSDate);
+Serial.println();
+startup = true;
 }
  
 void loop(){
   if(config.ftpEnabled){
      ftpSrv.handleFTP();
-  } else
-  {
-
+  } else {
     if(config.asAP){  
       dnsServer.processNextRequest();
     }
+
+  // Start of main code.
+    if(timers_disabled){
+      timers_disabled = 0; 
+      timerStart(timer0);
+      timerStart(timer1);
+      timerStart(timer2);                
+    }
+
+        if(interrupt0 > 0){
+        portENTER_CRITICAL(&timer0Mux);
+        interrupt0--;    
+        portEXIT_CRITICAL(&timer0Mux);
+        while (Serial2.available()){
+          gps.encode(Serial2.read());
+        }
+        if (debugSettings.debug2Serial){
+          Serial.println("Position updated.");
+        }
+      }
+
+
+
+
+
+
+
 
   }
 }
