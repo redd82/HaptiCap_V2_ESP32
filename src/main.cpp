@@ -20,6 +20,7 @@
 #define CALDATA_JSON_DOCSIZE 768
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
 #define GPSDATA_JSON_DOCSIZE 1024
+#define NROFWAYPOINTS 20
 
 void setup();
 void setupIO();
@@ -93,24 +94,32 @@ struct GPSData {
   float homeBaseLat;
   float homeBaseLon;
   float homeBaseBearing;
-  String homeBaseDirection;
+  char homeBaseDirection[8];
   float homeBaseDistance;
   float wayPointBearing;
-  String wayPointDirection;
+  char wayPointDirection[8];
   float compassHeading;
-  String compassDirection;
+  char compassDirection[8];
   int nrOfSatellites;
+};
+
+struct Waypoints {
+  float homeBase [2];
+  float wayPoints [NROFWAYPOINTS][3];
 };
 
 Config config;                         // <- global configuration object
 CalData caldata;
 DebugSettings debugSettings;
 GPSData gpsData;
+Waypoints wayPoints;
 
 // _PARAMS_
 const char* filename = "/hapticap.json";
 const char* filename_cal = "/caldata.json";
 const char* filename_debug = "/debug.json";
+const char* filename_gpsdata = "/gpsdata.json";
+const char* filename_waypoints = "/waypoints.json";
 String fileJs = "/";
 String fileJsMap = "/";
 String fileCss = "/";
@@ -298,22 +307,6 @@ void callbackT0(){
 
 void callbackT3(){
   
-}
-
-void getInitialReadings(){
-  // compassheading = GetCompassHeading();
-  // cardinalCompHeading = TinyGPSPlus::cardinal(compassheading);
-  // previous_compassheading = compassheading;
-  // coarsewaypoint = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-  // distancewaypoint = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-  // relheading = CalcRelHeading(compassheading,coarsewaypoint);
-  // cardinalToWaypoint = TinyGPSPlus::cardinal(coarsewaypoint);
-  // coarse2home = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
-  // distance2home = distance2waypoint(config.HOME_LAT, config.HOME_LON);
-  // cardinal2home = TinyGPSPlus::cardinal(coarse2home);
-  flCurrentLat = gps.location.lat();
-  flCurrentLon = gps.location.lng();
-  nrsatt = gps.satellites.value();
 }
 
 void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
@@ -643,21 +636,6 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
   }
 }
 
-  // char sensorName[8];
-  // int gpsTime;
-  // float ownLat;
-  // float ownLon;
-  // float homeBaseLat;
-  // float homeBaseLon;
-  // float homeBaseBearing;
-  // String homeBaseDirection;
-  // float homeBaseDistance;
-  // float wayPointBearing;
-  // String wayPointDirection;
-  // float compassHeading;
-  // String compassDirection;
-  // int nrOfSatellites;
-
  void saveGPSDataToJSON() {
   GPSDataDoc["sensor"] = "gps";
   GPSDataDoc["time"] = gpsData.gpsTime;
@@ -677,6 +655,7 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
 
 // Saves the GPS data to a file
 void saveGPSData(fs::FS &fs, const char * path, const GPSData &gpsData) {
+
   deleteFile(SPIFFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
@@ -694,11 +673,24 @@ void saveGPSData(fs::FS &fs, const char * path, const GPSData &gpsData) {
 }
 
 void putJSONGPSDataInMemory() {
-  String tempSensorName = GPSDataDoc["sensor"];
-  tempSensorName.toCharArray(gpsData.sensorName, 8);  
+  String temp = GPSDataDoc["sensor"];
+  temp.toCharArray(gpsData.sensorName, 8);  
   gpsData.gpsTime = GPSDataDoc["gpsTime"].as<int>();
   gpsData.ownLat = GPSDataDoc["ownLat"].as<float>(); 
-  gpsData.ownLon = GPSDataDoc["ownLon"].as<float>(); 
+  gpsData.ownLon = GPSDataDoc["ownLon"].as<float>();
+  gpsData.homeBaseLat = GPSDataDoc["homeBaseLat"].as<float>();
+  gpsData.homeBaseLon = GPSDataDoc["homeBaseLon"].as<float>();
+  gpsData.homeBaseBearing = GPSDataDoc["homeBaseBearing"].as<float>();
+  String temp1 = GPSDataDoc["homeBaseDirection"];
+  temp1.toCharArray(gpsData.homeBaseDirection, 8);
+  gpsData.homeBaseDistance = GPSDataDoc["homeBaseDistance"].as<float>();
+  gpsData.wayPointBearing = GPSDataDoc["wayPointBearing"];
+  String temp2 = GPSDataDoc["wayPointDirection"];
+  temp2.toCharArray(gpsData.wayPointDirection, 8);
+  gpsData.compassHeading = GPSDataDoc["compassHeading"].as<float>();
+  String temp3 = GPSDataDoc["compassDirection"];
+  temp3.toCharArray(gpsData.compassDirection, 8);  
+  gpsData.nrOfSatellites = GPSDataDoc["nrOfSatellites"].as<int>();
 }
 
 // Loads the debug settings from a file
@@ -718,99 +710,36 @@ void IRAM_ATTR loadGPSData(fs::FS &fs, const char * path, GPSData &gpsData) {
   }
 }
 
-void printConfigInMemory(){
-  Serial.print("As Accesspoint: ");
-  Serial.println(config.asAP);
-  Serial.print("Client to SSID: ");
-  Serial.println(config.clientSSID);
-  Serial.print("Client Password: ");
-  Serial.println(config.clientPasswd);
-  Serial.print("Connection Timeout: ");
-  Serial.println(config.connectionTimeOut);
-  Serial.print("Devicename: ");
-  Serial.println(config.deviceName);
-  Serial.print("Device password: ");
-  Serial.println(config.apPasswd);
-  Serial.print("GPS polling(s): ");
-  Serial.println(config.gpsPollSec);
-  Serial.print("Target reached: ");
-  Serial.println(config.targetReached);
-  Serial.print("Compass polling(ms): ");
-  Serial.println(config.compPollMs);
-  Serial.print("Compass offset(deg): ");
-  Serial.println(config.compOffset);
-  Serial.print("Homebase(lat): ");
-  Serial.println(config.HOME_LAT,6);
-  Serial.print("Homebase(lon):" );
-  Serial.println(config.HOME_LON,6);
-  Serial.print("Waypoint(lat): ");
-  Serial.println(config.WAYPOINT_LAT,6);
-  Serial.print("Waypoint(lon):" );
-  Serial.println(config.WAYPOINT_LON,6);  
-  Serial.print("Declanation angle(rads): ");
-  Serial.println(config.declAngleRad,12);
-  Serial.print("Sleeptime(mins): ");
-  Serial.println(config.sleepMins);
-  Serial.print("Threshold touch: ");
-  Serial.println(config.touchThreshold);
-  Serial.print("Enable touch: ");
-  Serial.println(config.touchEnabled);
-  Serial.print("Timezone offset: ");
-  Serial.println(config.timeZoneOffset);
-  Serial.print("Pulsed max distance: ");
-  Serial.println(config.maxDistance);
-  Serial.print("Max Delay between pulses: ");
-  Serial.println(config.maxDelay);
-
-  Serial.print("FTP Enabled: ");
-  Serial.println(config.ftpEnabled);  
-  bDumpConfig = 0;
-  Serial.println(); 
+void getInitialReadings(){
+  // compassheading = GetCompassHeading();
+  // cardinalCompHeading = TinyGPSPlus::cardinal(compassheading);
+  // previous_compassheading = compassheading;
+  // coarsewaypoint = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
+  // distancewaypoint = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
+  // relheading = CalcRelHeading(compassheading,coarsewaypoint);
+  cardinalToWaypoint = TinyGPSPlus::cardinal(coarsewaypoint);
+  coarse2home = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
+  distance2home = distance2waypoint(config.HOME_LAT, config.HOME_LON);
+  cardinal2home = TinyGPSPlus::cardinal(coarse2home);
+  flCurrentLat = gps.location.lat();
+  flCurrentLon = gps.location.lng();
+  nrsatt = gps.satellites.value();
 }
 
-void printCalDataInMemory(){
-  Serial.print("magBiasX: ");
-  Serial.println(caldata.magBiasX,6);
-  Serial.print("magBiasY: ");
-  Serial.println(caldata.magBiasY,6);
-  Serial.print("magBiasZ: ");
-  Serial.println(caldata.magBiasZ,6);
-  Serial.print("magScaleFacX: ");
-  Serial.println(caldata.magScaleFacX,6);
-  Serial.print("magScaleFacY: ");
-  Serial.println(caldata.magScaleFacY,6);
-  Serial.print("magScaleFacZ: ");
-  Serial.println(caldata.magScaleFacZ,6);
-  Serial.print("gyroBiasX: ");
-  Serial.println(caldata.gyroBiasX,6);
-  Serial.print("gyroBiasY: ");
-  Serial.println(caldata.gyroBiasY,6);
-  Serial.print("gyroBiasZ: ");
-  Serial.println(caldata.gyroBiasZ,6);
-  Serial.print("accelBiasX: ");
-  Serial.println(caldata.accelBiasX,6);
-  Serial.print("accelBiasY: ");
-  Serial.println(caldata.accelBiasY,6);
-  Serial.print("accelBiasZ:" );
-  Serial.println(caldata.accelBiasZ,6);
-  Serial.print("accelScaleX: ");
-  Serial.println(caldata.accelScaleX,6);
-  Serial.print("accelScaleY:" );
-  Serial.println(caldata.accelScaleY,6);  
-  Serial.print("accelScaleZ: ");
-  Serial.println(caldata.accelScaleZ,6);
-  bDumpConfig = 0;
-  Serial.println(); 
-}
-
-void printDebugSettingsInMemory(){
-  Serial.print("Debug2Serial: ");
-  Serial.println(debugSettings.debug2Serial);  
-  Serial.print("Debug RAW GPS to telnet: ");
-  Serial.println(debugSettings.debugData2Serial);
-  Serial.print("Haptic feedback Debug: ");
-  Serial.println(debugSettings.debugHaptic);
-}
+  // GPSDataDoc["sensor"] = "gps";
+  // GPSDataDoc["time"] = gpsData.gpsTime;
+  // GPSDataDoc["ownLat"] = gpsData.ownLat;  
+  // GPSDataDoc["ownLon"] = gpsData.ownLon;
+  // GPSDataDoc["homeBaseLat"] = gpsData.homeBaseLat;
+  // GPSDataDoc["homeBaseLon"] = gpsData.homeBaseLon;
+  // GPSDataDoc["homeBaseBearing"] = gpsData.homeBaseBearing;
+  // GPSDataDoc["homeBaseDirection"] = gpsData.homeBaseDirection;
+  // GPSDataDoc["homeBaseDistance"] = gpsData.homeBaseDistance;
+  // GPSDataDoc["wayPointBearing"] = gpsData.wayPointBearing;
+  // GPSDataDoc["wayPointDirection"] = gpsData.wayPointDirection;
+  // GPSDataDoc["compassHeading"] = gpsData.compassHeading;
+  // GPSDataDoc["compassDirection"] = gpsData.compassDirection;
+  // GPSDataDoc["nrOfSatellites"] = gpsData.nrOfSatellites;
 
 String getGPSTimeMinsSecs(){
   if(!startup){
@@ -894,6 +823,38 @@ float CalcRelHeading(float compforheading,float coarseforWaypoint){
       relativeHeading = 360.0 - compforheading + coarseforWaypoint;
     }
     return relativeHeading;
+}
+
+void updateGPSData(){
+  if (millis() > 5000 && gps.charsProcessed() < 10){
+      Serial.println(F("No GPS data received: check wiring"));
+  } else {
+      delay(10);
+      GPSDataDoc["ownLat"] = gps.location.lat();
+      GPSDataDoc["ownLon"] = gps.location.lng();
+      GPSDataDoc["coarse2home"] = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
+      GPSDataDoc["distance2home"] = distance2waypoint(config.HOME_LAT, config.HOME_LON);
+      GPSDataDoc["cardinal2home"] = TinyGPSPlus::cardinal(coarse2home);      
+      GPSDataDoc["coarsewaypoint"] = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
+      GPSDataDoc["distancewaypoint"] = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);      
+      GPSDataDoc["relheading"] = CalcRelHeading(compassheading,coarsewaypoint);
+      GPSDataDoc["relheading2home"] = CalcRelHeading(compassheading,coarse2home);
+      GPSDataDoc["cardinalToWaypoint"] = TinyGPSPlus::cardinal(coarsewaypoint);
+      GPSDataDoc["cardinalCompHeading"] = TinyGPSPlus::cardinal(compassheading);
+      GPSDataDoc["nrOfSattelites"] = gps.satellites.value();
+  }
+
+
+  if (nrsatt > 3){
+        digitalWrite(led,HIGH);
+  }else{
+        digitalWrite(led,LOW);
+  }
+
+  if (fix.isUpdated())
+    {
+        GPSFix = atol(fix.value());         
+    }
 }
 
 // Printline functions
@@ -993,6 +954,100 @@ static void printLines(unsigned long distance2Waypoint, float course2Waypoint, f
   printInt(touchValueT0, true, 9);
   printInt(touchValueT3, true, 9);  
   Serial.println();  
+}
+
+void printConfigInMemory(){
+  Serial.print("As Accesspoint: ");
+  Serial.println(config.asAP);
+  Serial.print("Client to SSID: ");
+  Serial.println(config.clientSSID);
+  Serial.print("Client Password: ");
+  Serial.println(config.clientPasswd);
+  Serial.print("Connection Timeout: ");
+  Serial.println(config.connectionTimeOut);
+  Serial.print("Devicename: ");
+  Serial.println(config.deviceName);
+  Serial.print("Device password: ");
+  Serial.println(config.apPasswd);
+  Serial.print("GPS polling(s): ");
+  Serial.println(config.gpsPollSec);
+  Serial.print("Target reached: ");
+  Serial.println(config.targetReached);
+  Serial.print("Compass polling(ms): ");
+  Serial.println(config.compPollMs);
+  Serial.print("Compass offset(deg): ");
+  Serial.println(config.compOffset);
+  Serial.print("Homebase(lat): ");
+  Serial.println(config.HOME_LAT,6);
+  Serial.print("Homebase(lon):" );
+  Serial.println(config.HOME_LON,6);
+  Serial.print("Waypoint(lat): ");
+  Serial.println(config.WAYPOINT_LAT,6);
+  Serial.print("Waypoint(lon):" );
+  Serial.println(config.WAYPOINT_LON,6);  
+  Serial.print("Declanation angle(rads): ");
+  Serial.println(config.declAngleRad,12);
+  Serial.print("Sleeptime(mins): ");
+  Serial.println(config.sleepMins);
+  Serial.print("Threshold touch: ");
+  Serial.println(config.touchThreshold);
+  Serial.print("Enable touch: ");
+  Serial.println(config.touchEnabled);
+  Serial.print("Timezone offset: ");
+  Serial.println(config.timeZoneOffset);
+  Serial.print("Pulsed max distance: ");
+  Serial.println(config.maxDistance);
+  Serial.print("Max Delay between pulses: ");
+  Serial.println(config.maxDelay);
+
+  Serial.print("FTP Enabled: ");
+  Serial.println(config.ftpEnabled);  
+  bDumpConfig = 0;
+  Serial.println(); 
+}
+
+void printCalDataInMemory(){
+  Serial.print("magBiasX: ");
+  Serial.println(caldata.magBiasX,6);
+  Serial.print("magBiasY: ");
+  Serial.println(caldata.magBiasY,6);
+  Serial.print("magBiasZ: ");
+  Serial.println(caldata.magBiasZ,6);
+  Serial.print("magScaleFacX: ");
+  Serial.println(caldata.magScaleFacX,6);
+  Serial.print("magScaleFacY: ");
+  Serial.println(caldata.magScaleFacY,6);
+  Serial.print("magScaleFacZ: ");
+  Serial.println(caldata.magScaleFacZ,6);
+  Serial.print("gyroBiasX: ");
+  Serial.println(caldata.gyroBiasX,6);
+  Serial.print("gyroBiasY: ");
+  Serial.println(caldata.gyroBiasY,6);
+  Serial.print("gyroBiasZ: ");
+  Serial.println(caldata.gyroBiasZ,6);
+  Serial.print("accelBiasX: ");
+  Serial.println(caldata.accelBiasX,6);
+  Serial.print("accelBiasY: ");
+  Serial.println(caldata.accelBiasY,6);
+  Serial.print("accelBiasZ:" );
+  Serial.println(caldata.accelBiasZ,6);
+  Serial.print("accelScaleX: ");
+  Serial.println(caldata.accelScaleX,6);
+  Serial.print("accelScaleY:" );
+  Serial.println(caldata.accelScaleY,6);  
+  Serial.print("accelScaleZ: ");
+  Serial.println(caldata.accelScaleZ,6);
+  bDumpConfig = 0;
+  Serial.println(); 
+}
+
+void printDebugSettingsInMemory(){
+  Serial.print("Debug2Serial: ");
+  Serial.println(debugSettings.debug2Serial);  
+  Serial.print("Debug RAW GPS to telnet: ");
+  Serial.println(debugSettings.debugData2Serial);
+  Serial.print("Haptic feedback Debug: ");
+  Serial.println(debugSettings.debugHaptic);
 }
 
 void webServerSetup(){
@@ -1097,6 +1152,28 @@ void webServerSetup(){
       request->send(200, "application/json", "{ \"GPSDate\" : \"" + temp + "\" }");
     }
   );
+
+  webServer.on("/getGPSData", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      //      serializeJson(GPSDataDoc, Serial);
+      String temp;
+      serializeJson(GPSDataDoc, temp);
+      request->send(200, "application/json", temp );
+    }
+  );
+
+  webServer.on("/setHome", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      //config.HOME_LAT, config.HOME_LON
+      // request->send(200, "application/json", temp );
+      GPSDataDoc["homeBaseLat"] = gps.location.lat();
+      GPSDataDoc["homeBaseLon"] = gps.location.lng();
+      // config.HOME_LAT = gps.location.lat();
+      // config.HOME_LON = gps.location.lng();
+      request->send(200, "application/json", "{ \"status\": 0 }");
+    }
+  );
+
 
   webServer.on("/hapticap.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -1371,10 +1448,10 @@ void loop(){
       timerStart(timer2);                
     }
 
-        if(interrupt0 > 0){
-        portENTER_CRITICAL(&timer0Mux);
-        interrupt0--;    
-        portEXIT_CRITICAL(&timer0Mux);
+    if(interrupt0 > 0){
+      portENTER_CRITICAL(&timer0Mux);
+      interrupt0--;    
+      portEXIT_CRITICAL(&timer0Mux);
         while (Serial2.available()){
           gps.encode(Serial2.read());
         }
@@ -1382,7 +1459,7 @@ void loop(){
           Serial.println("Position updated.");
         }
       }
-
+      updateGPSData();
 
 
 
