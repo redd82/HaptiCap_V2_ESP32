@@ -86,7 +86,7 @@ struct DebugSettings {
   bool debugData2Serial = false;
 };
 
-struct GPSData {
+struct SensorData {
   char sensorName[8];
   int gpsTime;
   float ownLat;
@@ -111,7 +111,7 @@ struct Waypoints {
 Config config;                         // <- global configuration object
 CalData caldata;
 DebugSettings debugSettings;
-GPSData gpsData;
+SensorData sensorData;
 Waypoints wayPoints;
 
 // _PARAMS_
@@ -127,7 +127,7 @@ String fileCssMap = "/";
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
-const char* cardinalCompHeading;
+const char* compassCardinalHeading;
 const char* cardinalToWaypoint;
 const char* cardinal2home;
 
@@ -265,7 +265,7 @@ void IRAM_ATTR onTimer2(){
 StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
 StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
 StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
-DynamicJsonDocument GPSDataDoc(GPSDATA_JSON_DOCSIZE);
+DynamicJsonDocument SensorDataDoc(GPSDATA_JSON_DOCSIZE);
 
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
@@ -636,25 +636,25 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
   }
 }
 
- void saveGPSDataToJSON() {
-  GPSDataDoc["sensor"] = "gps";
-  GPSDataDoc["time"] = gpsData.gpsTime;
-  GPSDataDoc["ownLat"] = gpsData.ownLat;  
-  GPSDataDoc["ownLon"] = gpsData.ownLon;
-  GPSDataDoc["homeBaseLat"] = gpsData.homeBaseLat;
-  GPSDataDoc["homeBaseLon"] = gpsData.homeBaseLon;
-  GPSDataDoc["homeBaseBearing"] = gpsData.homeBaseBearing;
-  GPSDataDoc["homeBaseDirection"] = gpsData.homeBaseDirection;
-  GPSDataDoc["homeBaseDistance"] = gpsData.homeBaseDistance;
-  GPSDataDoc["wayPointBearing"] = gpsData.wayPointBearing;
-  GPSDataDoc["wayPointDirection"] = gpsData.wayPointDirection;
-  GPSDataDoc["compassHeading"] = gpsData.compassHeading;
-  GPSDataDoc["compassDirection"] = gpsData.compassDirection;
-  GPSDataDoc["nrOfSatellites"] = gpsData.nrOfSatellites;
+ void saveSensorDataToJSON() {
+  SensorDataDoc["sensor"] = "gps";
+  SensorDataDoc["time"] = sensorData.gpsTime;
+  SensorDataDoc["ownLat"] = sensorData.ownLat;  
+  SensorDataDoc["ownLon"] = sensorData.ownLon;
+  SensorDataDoc["homeBaseLat"] = sensorData.homeBaseLat;
+  SensorDataDoc["homeBaseLon"] = sensorData.homeBaseLon;
+  SensorDataDoc["homeBaseBearing"] = sensorData.homeBaseBearing;
+  SensorDataDoc["homeBaseDirection"] = sensorData.homeBaseDirection;
+  SensorDataDoc["homeBaseDistance"] = sensorData.homeBaseDistance;
+  SensorDataDoc["wayPointBearing"] = sensorData.wayPointBearing;
+  SensorDataDoc["wayPointDirection"] = sensorData.wayPointDirection;
+  SensorDataDoc["compassHeading"] = sensorData.compassHeading;
+  SensorDataDoc["compassDirection"] = sensorData.compassDirection;
+  SensorDataDoc["nrOfSatellites"] = sensorData.nrOfSatellites;
 }
 
 // Saves the GPS data to a file
-void saveGPSData(fs::FS &fs, const char * path, const GPSData &gpsData) {
+void saveGPSData(fs::FS &fs, const char * path, const SensorData &sensorData) {
 
   deleteFile(SPIFFS, path);
   Serial.println(path);
@@ -663,8 +663,8 @@ void saveGPSData(fs::FS &fs, const char * path, const GPSData &gpsData) {
     Serial.println(F("Failed to create file"));
     return;
   }
-  saveGPSDataToJSON();
-  if (serializeJson(GPSDataDoc, file) == 0) {
+  saveSensorDataToJSON();
+  if (serializeJson(SensorDataDoc, file) == 0) {
     Serial.println(F("Failed to write to file"));
   }else{
     Serial.println(F("New file written"));
@@ -672,74 +672,43 @@ void saveGPSData(fs::FS &fs, const char * path, const GPSData &gpsData) {
   file.close();
 }
 
-void putJSONGPSDataInMemory() {
-  String temp = GPSDataDoc["sensor"];
-  temp.toCharArray(gpsData.sensorName, 8);  
-  gpsData.gpsTime = GPSDataDoc["gpsTime"].as<int>();
-  gpsData.ownLat = GPSDataDoc["ownLat"].as<float>(); 
-  gpsData.ownLon = GPSDataDoc["ownLon"].as<float>();
-  gpsData.homeBaseLat = GPSDataDoc["homeBaseLat"].as<float>();
-  gpsData.homeBaseLon = GPSDataDoc["homeBaseLon"].as<float>();
-  gpsData.homeBaseBearing = GPSDataDoc["homeBaseBearing"].as<float>();
-  String temp1 = GPSDataDoc["homeBaseDirection"];
-  temp1.toCharArray(gpsData.homeBaseDirection, 8);
-  gpsData.homeBaseDistance = GPSDataDoc["homeBaseDistance"].as<float>();
-  gpsData.wayPointBearing = GPSDataDoc["wayPointBearing"];
-  String temp2 = GPSDataDoc["wayPointDirection"];
-  temp2.toCharArray(gpsData.wayPointDirection, 8);
-  gpsData.compassHeading = GPSDataDoc["compassHeading"].as<float>();
-  String temp3 = GPSDataDoc["compassDirection"];
-  temp3.toCharArray(gpsData.compassDirection, 8);  
-  gpsData.nrOfSatellites = GPSDataDoc["nrOfSatellites"].as<int>();
+void putJSONSensorDataInMemory() {
+  String temp = SensorDataDoc["sensor"];
+  temp.toCharArray(sensorData.sensorName, 8);  
+  sensorData.gpsTime = SensorDataDoc["gpsTime"].as<int>();
+  sensorData.ownLat = SensorDataDoc["ownLat"].as<float>(); 
+  sensorData.ownLon = SensorDataDoc["ownLon"].as<float>();
+  sensorData.homeBaseLat = SensorDataDoc["homeBaseLat"].as<float>();
+  sensorData.homeBaseLon = SensorDataDoc["homeBaseLon"].as<float>();
+  sensorData.homeBaseBearing = SensorDataDoc["homeBaseBearing"].as<float>();
+  String temp1 = SensorDataDoc["homeBaseDirection"];
+  temp1.toCharArray(sensorData.homeBaseDirection, 8);
+  sensorData.homeBaseDistance = SensorDataDoc["homeBaseDistance"].as<float>();
+  sensorData.wayPointBearing = SensorDataDoc["wayPointBearing"];
+  String temp2 = SensorDataDoc["wayPointDirection"];
+  temp2.toCharArray(sensorData.wayPointDirection, 8);
+  sensorData.compassHeading = SensorDataDoc["compassHeading"].as<float>();
+  String temp3 = SensorDataDoc["compassDirection"];
+  temp3.toCharArray(sensorData.compassDirection, 8);  
+  sensorData.nrOfSatellites = SensorDataDoc["nrOfSatellites"].as<int>();
 }
 
 // Loads the debug settings from a file
-void IRAM_ATTR loadGPSData(fs::FS &fs, const char * path, GPSData &gpsData) {
+void IRAM_ATTR loadGPSData(fs::FS &fs, const char * path, SensorData &sensorData) {
   Serial.println(F("Loading debug settings..."));
   File file = fs.open(path, FILE_READ);
   delay(10);
-  DeserializationError error = deserializeJson(GPSDataDoc, file);
+  DeserializationError error = deserializeJson(SensorDataDoc, file);
 
   if (error){
     Serial.println(F("Failed to read file, using default debug settings."));
     Serial.println(error.c_str());
-    saveGPSData(SPIFFS, path, gpsData);
+    saveGPSData(SPIFFS, path, sensorData);
   }else{
-  putJSONGPSDataInMemory();
+  putJSONSensorDataInMemory();
   file.close();
   }
 }
-
-void getInitialReadings(){
-  // compassheading = GetCompassHeading();
-  // cardinalCompHeading = TinyGPSPlus::cardinal(compassheading);
-  // previous_compassheading = compassheading;
-  // coarsewaypoint = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-  // distancewaypoint = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-  // relheading = CalcRelHeading(compassheading,coarsewaypoint);
-  cardinalToWaypoint = TinyGPSPlus::cardinal(coarsewaypoint);
-  coarse2home = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
-  distance2home = distance2waypoint(config.HOME_LAT, config.HOME_LON);
-  cardinal2home = TinyGPSPlus::cardinal(coarse2home);
-  flCurrentLat = gps.location.lat();
-  flCurrentLon = gps.location.lng();
-  nrsatt = gps.satellites.value();
-}
-
-  // GPSDataDoc["sensor"] = "gps";
-  // GPSDataDoc["time"] = gpsData.gpsTime;
-  // GPSDataDoc["ownLat"] = gpsData.ownLat;  
-  // GPSDataDoc["ownLon"] = gpsData.ownLon;
-  // GPSDataDoc["homeBaseLat"] = gpsData.homeBaseLat;
-  // GPSDataDoc["homeBaseLon"] = gpsData.homeBaseLon;
-  // GPSDataDoc["homeBaseBearing"] = gpsData.homeBaseBearing;
-  // GPSDataDoc["homeBaseDirection"] = gpsData.homeBaseDirection;
-  // GPSDataDoc["homeBaseDistance"] = gpsData.homeBaseDistance;
-  // GPSDataDoc["wayPointBearing"] = gpsData.wayPointBearing;
-  // GPSDataDoc["wayPointDirection"] = gpsData.wayPointDirection;
-  // GPSDataDoc["compassHeading"] = gpsData.compassHeading;
-  // GPSDataDoc["compassDirection"] = gpsData.compassDirection;
-  // GPSDataDoc["nrOfSatellites"] = gpsData.nrOfSatellites;
 
 String getGPSTimeMinsSecs(){
   if(!startup){
@@ -830,18 +799,18 @@ void updateGPSData(){
       Serial.println(F("No GPS data received: check wiring"));
   } else {
       delay(10);
-      GPSDataDoc["ownLat"] = gps.location.lat();
-      GPSDataDoc["ownLon"] = gps.location.lng();
-      GPSDataDoc["coarse2home"] = coarse2waypoint(config.HOME_LAT, config.HOME_LON);
-      GPSDataDoc["distance2home"] = distance2waypoint(config.HOME_LAT, config.HOME_LON);
-      GPSDataDoc["cardinal2home"] = TinyGPSPlus::cardinal(coarse2home);      
-      GPSDataDoc["coarsewaypoint"] = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
-      GPSDataDoc["distancewaypoint"] = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);      
-      GPSDataDoc["relheading"] = CalcRelHeading(compassheading,coarsewaypoint);
-      GPSDataDoc["relheading2home"] = CalcRelHeading(compassheading,coarse2home);
-      GPSDataDoc["cardinalToWaypoint"] = TinyGPSPlus::cardinal(coarsewaypoint);
-      GPSDataDoc["cardinalCompHeading"] = TinyGPSPlus::cardinal(compassheading);
-      GPSDataDoc["nrOfSattelites"] = gps.satellites.value();
+      SensorDataDoc["ownLat"] = gps.location.lat();
+      SensorDataDoc["ownLon"] = gps.location.lng();
+      SensorDataDoc["coarse2home"] = coarse2waypoint(SensorDataDoc["homeBaseLat"].as<float>(), SensorDataDoc["homeBaseLon"].as<float>());
+      SensorDataDoc["distance2home"] = distance2waypoint(SensorDataDoc["homeBaseLat"].as<float>(), SensorDataDoc["homeBaseLon"].as<float>());
+      SensorDataDoc["cardinal2home"] = TinyGPSPlus::cardinal(coarse2home);      
+      SensorDataDoc["coarsewaypoint"] = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
+      SensorDataDoc["distancewaypoint"] = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);      
+      SensorDataDoc["relheading"] = CalcRelHeading(compassheading,coarsewaypoint);
+      SensorDataDoc["relheading2home"] = CalcRelHeading(compassheading,coarse2home);
+      SensorDataDoc["cardinalToWaypoint"] = TinyGPSPlus::cardinal(coarsewaypoint);
+      //SensorDataDoc["compassCardinalHeading"] = TinyGPSPlus::cardinal(compassheading);
+      SensorDataDoc["nrOfSattelites"] = gps.satellites.value();
   }
 
 
@@ -855,6 +824,52 @@ void updateGPSData(){
     {
         GPSFix = atol(fix.value());         
     }
+}
+
+float GetCompassHeading(){
+  //sensors_event_t event;
+  //compass.getEvent(&event);
+  float sum = 0.0;
+  xyzFloat gValue = myMPU9250.getGValues();
+  xyzFloat gyr = myMPU9250.getGyrValues();
+  xyzFloat magValue = myMPU9250.getMagValues();
+  float temp = myMPU9250.getTemperature();
+  float resultantG = myMPU9250.getResultantG(gValue);
+  previous_compassheading = compassheading;
+  // Calculate heading
+  float heading = atan2(magValue.y, magValue.x);
+  //float heading = atan2(event.magnetic.y, event.magnetic.x);
+  float declinationAngle = config.declAngleRad;
+  heading += declinationAngle;
+  
+  // Correct for heading < 0deg and heading > 360deg
+  if (heading < 0){
+    heading += 2.0 * PI;
+  }
+
+  if (heading > 2.0 * PI){
+    heading -= 2.0 * PI;
+  }
+  // Convert to degrees
+  float headingDegrees = heading * 180.0/M_PI;
+  headingraw = headingDegrees;
+
+    if(config.compOffset >= 0){
+      if(headingDegrees < config.compOffset){
+        headingDegrees = headingDegrees - config.compOffset + 360.0;
+      }else{
+        headingDegrees = headingDegrees - config.compOffset;
+      }
+    }else{
+        headingDegrees = headingDegrees + (-1.0 * config.compOffset);
+        if(headingDegrees >= 360)
+        {
+            headingDegrees = headingDegrees - 360;
+        }
+    }
+  //SensorDataDoc["compassCardinalHeading"] = TinyGPSPlus::cardinal(headingDegrees);
+  SensorDataDoc["compassHeading"] = headingDegrees;
+  return headingDegrees;
 }
 
 // Printline functions
@@ -1157,19 +1172,16 @@ void webServerSetup(){
     {
       //      serializeJson(GPSDataDoc, Serial);
       String temp;
-      serializeJson(GPSDataDoc, temp);
+      serializeJson(SensorDataDoc, temp);
       request->send(200, "application/json", temp );
     }
   );
 
   webServer.on("/setHome", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      //config.HOME_LAT, config.HOME_LON
       // request->send(200, "application/json", temp );
-      GPSDataDoc["homeBaseLat"] = gps.location.lat();
-      GPSDataDoc["homeBaseLon"] = gps.location.lng();
-      // config.HOME_LAT = gps.location.lat();
-      // config.HOME_LON = gps.location.lng();
+      SensorDataDoc["homeBaseLat"] = gps.location.lat();
+      SensorDataDoc["homeBaseLon"] = gps.location.lng();
       request->send(200, "application/json", "{ \"status\": 0 }");
     }
   );
@@ -1263,6 +1275,22 @@ void webServerSetupFTP(){
   webServer.begin();
   Serial.print("HTTP Started on port: ");
   Serial.println(config.http_port);
+}
+
+void getInitialReadings(){
+   sensorData.compassHeading = GetCompassHeading();
+   //compassCardinalHeading = TinyGPSPlus::cardinal(sensorData.compassHeading);
+   previous_compassheading = sensorData.compassHeading;
+  // coarsewaypoint = coarse2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
+  // distancewaypoint = distance2waypoint(config.WAYPOINT_LAT, config.WAYPOINT_LON);
+   relheading = CalcRelHeading(sensorData.compassHeading,coarsewaypoint);
+  cardinalToWaypoint = TinyGPSPlus::cardinal(coarsewaypoint);
+  coarse2home = coarse2waypoint(SensorDataDoc["homeBaseLat"].as<float>(), SensorDataDoc["homeBaseLon"].as<float>());
+  distance2home = distance2waypoint(SensorDataDoc["homeBaseLat"].as<float>(), SensorDataDoc["homeBaseLon"].as<float>());
+  cardinal2home = TinyGPSPlus::cardinal(coarse2home);
+  flCurrentLat = gps.location.lat();
+  flCurrentLon = gps.location.lng();
+  nrsatt = gps.satellites.value();
 }
 
 void setup(){
@@ -1369,6 +1397,7 @@ void setup(){
   }
  
   Serial.println("");
+  byte whoAmICode = 0x00;
   Wire.begin();
   if(!myMPU9250.init()){
     Serial.println("MPU9250 does not respond");
@@ -1384,6 +1413,17 @@ void setup(){
     Serial.println("Magnetometer is connected");
   }
 
+  delay(1000);
+  myMPU9250.autoOffsets();
+  myMPU9250.enableGyrDLPF();
+  myMPU9250.setGyrDLPF(MPU9250_DLPF_6);  // lowest noise
+  myMPU9250.setSampleRateDivider(5);
+  myMPU9250.setGyrRange(MPU9250_GYRO_RANGE_250);
+  myMPU9250.setAccRange(MPU9250_ACC_RANGE_2G);
+  myMPU9250.enableAccDLPF(true);
+  myMPU9250.setAccDLPF(MPU9250_DLPF_6);
+  myMPU9250.setMagOpMode(AK8963_CONT_MODE_100HZ);
+  
   // Start server
   if (SPIFFS.begin(true)) {
 
@@ -1461,11 +1501,18 @@ void loop(){
       }
       updateGPSData();
 
-
-
-
-
-
-
+      if(interrupt1 > 0){
+        portENTER_CRITICAL(&timer1Mux);
+        interrupt1--;      
+        portEXIT_CRITICAL(&timer1Mux);
+        sensorData.compassHeading = GetCompassHeading();
+        if(interrupt1 > 10){
+          interrupt1 = 2;
+        }
+        if (debugSettings.debug2Serial){
+          Serial.print("Heading updated: ");
+          Serial.println(sensorData.compassHeading);
+        }                  
+      }
   }
 }
