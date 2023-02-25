@@ -273,14 +273,6 @@ WiFiClient serverClients[MAX_SRV_CLIENTS];
 AsyncWebServer webServer(config.http_port);
 DNSServer dnsServer;
 
-/*
-if (magneticVariation.isUpdated())
-  {
-    Serial.print("Magnetic variation is ");
-    Serial.println(magneticVariation.value());
-  }
-*/
-
 static void smartDelay(unsigned long ms){
   unsigned long start = millis();
   do 
@@ -858,7 +850,6 @@ void updateSensorData(){
     {
         GPSFix = atol(fix.value());         
     }
-    //Serial.println("Sensordata updated");
 }
 
 void getInitialReadings(){
@@ -1256,19 +1247,15 @@ void loop(){
       updateSensorData();
     }
 
-  // if(interrupt1 > 0){
-  //   portENTER_CRITICAL(&timer1Mux);
-  //   interrupt1--;      
-  //   portEXIT_CRITICAL(&timer1Mux);
-  //   sensorData.compassHeading = GetCompassHeading();
-  //   if(interrupt1 > 10){
-  //     interrupt1 = 2;
-  //   }
-  //   if (debugSettings.debug2Serial){
-  //     Serial.print("Heading updated: ");
-  //     Serial.println(sensorData.compassHeading);
-  //   }                  
-  // }
+  if(interrupt1 > 0){
+    portENTER_CRITICAL(&timer1Mux);
+    interrupt1--;      
+    portEXIT_CRITICAL(&timer1Mux);
+    sensorData.compassHeading = GetCompassHeading();
+    if(interrupt1 > 10){
+      interrupt1 = 2;
+    }                 
+  }
 
   // if(interrupt2){
   //   portENTER_CRITICAL(&timer2Mux);
