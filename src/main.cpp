@@ -116,7 +116,7 @@ struct Waypoints {
 
 struct MapList {
   char map [NROFMAPS][3];
-}
+};
 
 Config config;                         // <- global configuration object
 CalData caldata;
