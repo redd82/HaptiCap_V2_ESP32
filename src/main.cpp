@@ -298,18 +298,6 @@ void callbackT3(){
   
 }
 
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-  if(!index){
-    Serial.printf("UploadStart: %s\n", filename.c_str());
-  }
-  for(size_t i=0; i<len; i++){
-    Serial.write(data[i]);
-  }
-  if(final){
-    Serial.printf("UploadEnd: %s, %u B\n", filename.c_str(), index+len);
-  }
-}
-
 // Replaces placeholder with value
 void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
@@ -416,6 +404,13 @@ void deleteFile(fs::FS &fs, const char * path){
     } else {
         Serial.println("Delete failed");
     }
+}
+
+String humanReadableSize(const size_t bytes) {
+    if (bytes < 1024) return String(bytes) + " B";
+    else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
+    else if (bytes < (1024 * 1024 * 1024)) return String(bytes / 1024.0 / 1024.0) + " MB";
+    else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
 }
 
 void saveConfigDataToJSON(){
@@ -876,6 +871,34 @@ void getInitialReadings(){
   saveSensorDataToJSON();
 }
 
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+  if(!index){
+    Serial.printf("UploadStart: %s\n", filename.c_str());
+  }
+  for(size_t i=0; i<len; i++){
+    Serial.write(data[i]);
+  }
+  if(final){
+    Serial.printf("UploadEnd: %s, %u B\n", filename.c_str(), index+len);
+  }
+   listDir(SPIFFS, "/", 0);
+}
+
+// void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+//   Serial.println("handling upload");
+//   if (!index) {
+//       request->_tempFile = SPIFFS.open("/" + filename, "w");
+//   }
+//   if (len) {
+//       request->_tempFile.write(data, len);
+//   }
+//   if (final) {
+//       request->_tempFile.close();
+//       request->redirect("/files");
+//   }
+//   listDir(SPIFFS, "/", 0);
+// }
+
 void webServerSetup(){
 // Webserver setup responses
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -1032,6 +1055,21 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/upload-file", HTTP_GET, [](AsyncWebServerRequest* request) {
+// String html = <body><div><form method='POST' enctype='multipart/form-data' action='/upload'><input type='file' name='dummy'><button type='submit'>Send</button></form></div></body>;
+
+    String html = "<body><div><form method='post' action='/upload-file'><input type='file'><button>Send</button></form></div></body>";
+    request->send(200, "text/html", html);
+    });
+
+  webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest* request) {
+    AsyncWebServerResponse* response = request->beginResponse(200, "text/html", "File Uploaded");
+    response->addHeader("Connection", "close");
+    request->send(response);
+    }, handleUpload);
+
+  webServer.onFileUpload(handleUpload);
+
   webServer.onNotFound( []( AsyncWebServerRequest * request )
      {
       request->send(SPIFFS, "/redirect.html", String(), false, processor);
@@ -1159,6 +1197,9 @@ void setup(){
         Serial.println("SPIFFS.begin() failed");
   } else {
      listDir(SPIFFS, "/", 0);
+    Serial.print("SPIFFS Free: "); Serial.println(humanReadableSize((SPIFFS.totalBytes() - SPIFFS.usedBytes())));
+    Serial.print("SPIFFS Used: "); Serial.println(humanReadableSize(SPIFFS.usedBytes()));
+    Serial.print("SPIFFS Total: "); Serial.println(humanReadableSize(SPIFFS.totalBytes()));
   }
 
   Serial.println();
