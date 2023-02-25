@@ -420,7 +420,7 @@ String humanReadableSize(const size_t bytes) {
 }
 
 void updateMapDB(){
-
+  
 }
 
 void saveConfigDataToJSON(){
