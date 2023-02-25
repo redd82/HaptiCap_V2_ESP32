@@ -19,9 +19,9 @@
 #define CALDATA_JSON_DOCSIZE 768
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
 #define SENSORDATA_JSON_DOCSIZE 1024
+#define MAPLIST_JSON_DOCSIZE 1024
 #define NROFWAYPOINTS 20
 #define NROFMAPS 8
-
 
 void setup();
 void setupIO();
@@ -115,7 +115,8 @@ struct Waypoints {
 };
 
 struct MapList {
-  char map [NROFMAPS][3];
+  // id, name, country, area, mapfile, kmlfile, mapfile.json
+  char * map [NROFMAPS][5];
 };
 
 Config config;                         // <- global configuration object
@@ -123,6 +124,7 @@ CalData caldata;
 DebugSettings debugSettings;
 SensorData sensorData;
 Waypoints wayPoints;
+MapList mapList;
 
 // _PARAMS_
 const char* filename = "/hapticap.json";
@@ -130,6 +132,7 @@ const char* filename_cal = "/caldata.json";
 const char* filename_debug = "/debug.json";
 const char* filename_sensordata = "/sensordata.json";
 const char* filename_waypoints = "/waypoints.json";
+const char* filename_mapData = "/mapData.json";
 String fileJs = "/";
 String fileJsMap = "/";
 String fileCss = "/";
@@ -190,10 +193,6 @@ RTC_DATA_ATTR double flCurrentLon;
 RTC_DATA_ATTR bool bDumpConfig = 1;
 RTC_DATA_ATTR bool bTargetReachedAck = 0;
 RTC_DATA_ATTR bool bHomeReachedAck = 0;
-
-String inputLat = String(config.WAYPOINT_LAT,6);
-String inputLon = String(config.WAYPOINT_LON,6);
-String inputSetting = "false";
 
 String str2HTML;
 
@@ -262,19 +261,16 @@ void IRAM_ATTR onTimer2(){
   portEXIT_CRITICAL_ISR(&timer2Mux);
 }
 
-// #include "webserver_processor.h"
-// #include "config_save_load.h"
-
 // Make sensor and server objects
 StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
 StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
 StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
 StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
+StaticJsonDocument<MAPLIST_JSON_DOCSIZE> mapListDoc;
 
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
 MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
-WiFiServer TelNetserver(23);
 WiFiClient serverClients[MAX_SRV_CLIENTS];
 AsyncWebServer webServer(config.http_port);
 DNSServer dnsServer;
@@ -326,9 +322,7 @@ String processor(const String& var){
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     int fileCounter = 0;
     String fileName = "";
-
     Serial.printf("Listing directory: %s\r\n", dirname);
-
     File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
@@ -338,7 +332,6 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         Serial.println(" - not a directory");
         return;
     }
-
     File file = root.openNextFile();
     while(file){
         if(file.isDirectory()){
@@ -375,7 +368,6 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
 }
 
 void printFile(fs::FS &fs, const char * path) {
-  // Open file for reading
   File file = fs.open(path);
   if (!file) {
     Serial.println(F("Failed to read file"));
@@ -394,12 +386,10 @@ String readFile(fs::FS &fs, const char * path){
     Serial.println("- empty file or failed to open file");
     return String();
   }
-  //Serial.println("- read from file:");
   String fileContent;
   while(file.available()){
     fileContent+=String((char)file.read());
   }
-  //Serial.println(fileContent);
   return fileContent;
 }
 
@@ -420,7 +410,7 @@ String humanReadableSize(const size_t bytes) {
 }
 
 void updateMapDB(){
-  
+
 }
 
 void saveConfigDataToJSON(){
@@ -621,7 +611,7 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
   }
 }
 
- void saveSensorDataToJSON() {
+void saveSensorDataToJSON() {
   sensorDataDoc["sensor"] = "gps";
   sensorDataDoc["time"] = GPSTimeMins;
   sensorDataDoc["ownLat"] = sensorData.ownLat;  
@@ -700,59 +690,105 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
   }
 }
 
+// Map List saving and loading
+ void saveMapListToJSON() {
+  // mapListDoc["sensor"] = "gps";
+  // mapListDoc["time"] = GPSTimeMins;
+  // mapListDoc["ownLat"] = sensorData.ownLat;  
+}
+
+void saveMapList(fs::FS &fs, const char * path, const MapList &mapList) {
+  deleteFile(SPIFFS, path);
+  Serial.println(path);
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.println(F("Failed to create file"));
+    return;
+  }
+  saveMapListToJSON();
+  if (serializeJson(mapListDoc, file) == 0) {
+    Serial.println(F("Failed to write to file"));
+  }else{
+    Serial.println(F("New file written"));
+  }
+  file.close();
+}
+
+void putJSONMapListInMemory() {
+  // String temp = mapListDoc["sensor"];
+  // temp.toCharArray(mapListDoc., 8);  
+  // mapListDoc.gpsTime = mapListDoc["gpsTime"].as<int>();
+  // mapListDoc.ownLat = mapListDoc["ownLat"].as<double>(); 
+}
+
+void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, MapList &mapList) {
+  Serial.println(F("Loading debug settings..."));
+  File file = fs.open(path, FILE_READ);
+  delay(10);
+  DeserializationError error = deserializeJson(mapListDoc, file);
+
+  if (error){
+    Serial.println(F("Failed to read file, using default debug settings."));
+    Serial.println(error.c_str());
+    saveMapList(SPIFFS, path, mapList);
+  }else{
+  putJSONMapListInMemory();
+  file.close();
+  }
+}
+
 String getGPSTimeMinsSecs(){
-        hours = gps.time.hour() + config.timeZoneOffset;
-        mins = gps.time.minute();
-        secs = gps.time.second();
-      if(hours<10){
-        GPSTimeMinsSecs = "0" + String(hours);  
-      }else{
-          if(hours = 24){
-            GPSTimeMinsSecs = "00";
-          }else {
-         GPSTimeMinsSecs = String(hours);  
-        }
-      }
-      if(mins<10){
-        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + "0" + String(mins);
-      }else{
-        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + String(mins);
-        }
-      if(secs<10){
-        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + "0" + String(secs);      
-      }else{
-        GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + String(secs);
-        }
-      // }
-      return GPSTimeMinsSecs;
+  hours = gps.time.hour() + config.timeZoneOffset;
+  mins = gps.time.minute();
+  secs = gps.time.second();
+  if(hours<10){
+    GPSTimeMinsSecs = "0" + String(hours);  
+  }else{
+    if(hours > 23){
+      GPSTimeMinsSecs = "00";
+    }else {
+      GPSTimeMinsSecs = String(hours);  
+    }
+  }
+  if(mins<10){
+    GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + "0" + String(mins);
+  }else{
+    GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + String(mins);
+    }
+  if(secs<10){
+    GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + "0" + String(secs);      
+  }else{
+    GPSTimeMinsSecs = GPSTimeMinsSecs + ":" + String(secs);
+  }
+  return GPSTimeMinsSecs;
 }
 
 String getGPSTimeMins(){
-        hours = gps.time.hour() + config.timeZoneOffset;
-        mins = gps.time.minute();
-      if(hours<10){
-        GPSTimeMins = "0" + String(hours);  
-      }else{
-          if(hours = 24){
-            GPSTimeMins = "00";
-          }else {
-            GPSTimeMins = String(hours);  
-          }
-        }
-      if(mins<10){
-        GPSTimeMins = GPSTimeMins + ":" + "0" + String(mins);
-      }else{
-        GPSTimeMins = GPSTimeMins + ":" + String(mins);
-        }
-      return GPSTimeMins;
+  hours = gps.time.hour() + config.timeZoneOffset;
+  mins = gps.time.minute();
+  if(hours<10){
+    GPSTimeMins = "0" + String(hours);
+  }else{
+    if(hours > 23){
+      GPSTimeMins = "00";
+    }else {
+      GPSTimeMins = String(hours);
+    }
+  }
+  if(mins<10){
+    GPSTimeMins = GPSTimeMins + ":" + "0" + String(mins);
+  }else{
+    GPSTimeMins = GPSTimeMins + ":" + String(mins);
+    }
+  return GPSTimeMins;
 }
 
 String getGPSDate(){
-        day = gps.date.day();
-        month = gps.date.month();
-        year = gps.date.year();
-        GPSDate = String(year) + "-" + String(month) + "-" + String(day);
-      return GPSDate;
+  day = gps.date.day();
+  month = gps.date.month();
+  year = gps.date.year();
+  GPSDate = String(year) + "-" + String(month) + "-" + String(day);
+  return GPSDate;
 }
 
 float GetCompassHeading(){
@@ -798,63 +834,62 @@ float GetCompassHeading(){
 }
 
 unsigned long distance2waypoint(float waypoint_latt, float waypoint_long){ 
-    unsigned long distanceToWaypoint = (unsigned long)TinyGPSPlus::distanceBetween(sensorData.ownLat,sensorData.ownLon,waypoint_latt,waypoint_long);
-    return distanceToWaypoint;
+  unsigned long distanceToWaypoint = (unsigned long)TinyGPSPlus::distanceBetween(sensorData.ownLat,sensorData.ownLon,waypoint_latt,waypoint_long);
+  return distanceToWaypoint;
 }
 
 float coarse2waypoint(float waypoint_latt, float waypoint_long){
-    float coarseToWaypoint = TinyGPSPlus::courseTo(sensorData.ownLat,sensorData.ownLon,waypoint_latt,waypoint_long);
-    return coarseToWaypoint;
+  float coarseToWaypoint = TinyGPSPlus::courseTo(sensorData.ownLat,sensorData.ownLon,waypoint_latt,waypoint_long);
+  return coarseToWaypoint;
 }
 
 float CalcRelHeading(float compforheading,float coarseforWaypoint){
-    float relativeHeading;
-    if (coarseforWaypoint > compforheading){   
-      relativeHeading = coarseforWaypoint - compforheading;
-    }
-    else{
-      relativeHeading = 360.0 - compforheading + coarseforWaypoint;
-    }
-    return relativeHeading;
+  float relativeHeading;
+  if (coarseforWaypoint > compforheading){   
+    relativeHeading = coarseforWaypoint - compforheading;
+  }
+  else{
+    relativeHeading = 360.0 - compforheading + coarseforWaypoint;
+  }
+  return relativeHeading;
 }
 
 void updateSensorData(){
   if (millis() > 5000 && gps.charsProcessed() < 10){
       Serial.println(F("No GPS data received: check wiring"));
   } else {
-      smartDelay(50);
-      String temp;
-      sensorData.gpsTime = gps.time.value();
-      sensorData.ownLat = gps.location.lat();
-      sensorData.ownLon = gps.location.lng();
-      sensorData.compassHeading = GetCompassHeading();
-      temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
-      temp.toCharArray(sensorData.compassCardinal,8);
-      sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
-      sensorData.homeBaseBearing = coarse2waypoint(sensorData.ownLat, sensorData.ownLon);
-      sensorData.homeBaseDistance = distance2waypoint(sensorData.homeBaseLat, sensorData.homeBaseLon);
-      temp = TinyGPSPlus::cardinal(sensorData.homeBaseBearing);
-      temp.toCharArray(sensorData.homeBaseCardinal,8);
-      sensorData.wayPointBearing = coarse2waypoint(sensorData.wayPointLat, sensorData.wayPointLon);
-      sensorData.wayPointDistance = distance2waypoint(sensorData.wayPointLat, sensorData.wayPointLon);      
-      sensorData.relheading = CalcRelHeading(compassheading, sensorData.wayPointBearing);
-      temp = TinyGPSPlus::cardinal(sensorData.wayPointBearing); 
-      temp.toCharArray(sensorData.wayPointCardinal,8);
-      sensorData.nrOfSatellites = gps.satellites.value();
-      getGPSTimeMins();
-      saveSensorDataToJSON();
+    smartDelay(50);
+    String temp;
+    sensorData.gpsTime = gps.time.value();
+    sensorData.ownLat = gps.location.lat();
+    sensorData.ownLon = gps.location.lng();
+    sensorData.compassHeading = GetCompassHeading();
+    temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
+    temp.toCharArray(sensorData.compassCardinal,8);
+    sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
+    sensorData.homeBaseBearing = coarse2waypoint(sensorData.ownLat, sensorData.ownLon);
+    sensorData.homeBaseDistance = distance2waypoint(sensorData.homeBaseLat, sensorData.homeBaseLon);
+    temp = TinyGPSPlus::cardinal(sensorData.homeBaseBearing);
+    temp.toCharArray(sensorData.homeBaseCardinal,8);
+    sensorData.wayPointBearing = coarse2waypoint(sensorData.wayPointLat, sensorData.wayPointLon);
+    sensorData.wayPointDistance = distance2waypoint(sensorData.wayPointLat, sensorData.wayPointLon);      
+    sensorData.relheading = CalcRelHeading(compassheading, sensorData.wayPointBearing);
+    temp = TinyGPSPlus::cardinal(sensorData.wayPointBearing); 
+    temp.toCharArray(sensorData.wayPointCardinal,8);
+    sensorData.nrOfSatellites = gps.satellites.value();
+    getGPSTimeMins();
+    saveSensorDataToJSON();
   }
 
   if (nrsatt > 3){
-        digitalWrite(led,HIGH);
+    digitalWrite(led,HIGH);
   }else{
-        digitalWrite(led,LOW);
+    digitalWrite(led,LOW);
   }
 
-  if (fix.isUpdated())
-    {
-        GPSFix = atol(fix.value());         
-    }
+  if (fix.isUpdated()){
+    GPSFix = atol(fix.value());         
+  }
 }
 
 void getInitialReadings(){
@@ -884,15 +919,15 @@ void getInitialReadings(){
 void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
   Serial.println("handling upload");
   if (!index) {
-      request->_tempFile = SPIFFS.open("/" + filename, "w");
+    request->_tempFile = SPIFFS.open("/" + filename, "w");
   }
   if (len) {
-      request->_tempFile.write(data, len);
+    request->_tempFile.write(data, len);
   }
   if (final) {
-      request->_tempFile.close();
-      updateMapDB();
-      request->redirect("/navigation/map-list");
+    request->_tempFile.close();
+    updateMapDB();
+    request->redirect("/navigation/map-list");
   }
   // listDir(SPIFFS, "/", 0);
 }
@@ -947,7 +982,18 @@ void webServerSetup(){
                     saveDebugSettings(SPIFFS, filename_debug, debugSettings);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
+            } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
+            {
+                if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+                {
+                    JsonObject obj = mapListDoc.as<JsonObject>();
+                    putJSONDebugSettingsInMemory();
+                    saveMapList(SPIFFS, filename_debug, mapList);
+                }
+                request->send(200, "application/json", "{ \"status\": 0 }");
             }
+
+            // /navigation/register-map"
         }
     );
 
@@ -1059,12 +1105,6 @@ void webServerSetup(){
     }
   );
 
-  webServer.on("/upload-file", HTTP_GET, [](AsyncWebServerRequest* request) {
-    String html = "<body><div><form method='POST' enctype='multipart/form-data' action='/upload'><input type='file' name='dummy'><button type='submit'>Send</button></form></div></body>";
-    request->send(200, "text/html", html);
-    });
-
-      // upload a file to /upload-file
   webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest * request) {
     request->send(200);
   }, handleUpload);
@@ -1072,13 +1112,12 @@ void webServerSetup(){
   webServer.onFileUpload(handleUpload);
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
-     {
-      request->send(SPIFFS, "/redirect.html", String(), false, processor);
-      timerRestart(timer2);
-      Serial.println("redirect called");
-    });
+    {
+    request->send(SPIFFS, "/redirect.html", String(), false, processor);
+    timerRestart(timer2);
+    Serial.println("redirect called");
+  });
   
- 
   webServer.begin();
   Serial.print("HTTP Started on port: ");
   Serial.println(config.http_port);
