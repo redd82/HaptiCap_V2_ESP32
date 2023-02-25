@@ -871,33 +871,33 @@ void getInitialReadings(){
   saveSensorDataToJSON();
 }
 
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-  if(!index){
-    Serial.printf("UploadStart: %s\n", filename.c_str());
-  }
-  for(size_t i=0; i<len; i++){
-    Serial.write(data[i]);
-  }
-  if(final){
-    Serial.printf("UploadEnd: %s, %u B\n", filename.c_str(), index+len);
-  }
-   listDir(SPIFFS, "/", 0);
-}
-
 // void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-//   Serial.println("handling upload");
-//   if (!index) {
-//       request->_tempFile = SPIFFS.open("/" + filename, "w");
+//   if(!index){
+//     Serial.printf("UploadStart: %s\n", filename.c_str());
 //   }
-//   if (len) {
-//       request->_tempFile.write(data, len);
+//   for(size_t i=0; i<len; i++){
+//     Serial.write(data[i]);
 //   }
-//   if (final) {
-//       request->_tempFile.close();
-//       request->redirect("/files");
+//   if(final){
+//     Serial.printf("UploadEnd: %s, %u B\n", filename.c_str(), index+len);
 //   }
-//   listDir(SPIFFS, "/", 0);
+//    listDir(SPIFFS, "/", 0);
 // }
+
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+  Serial.println("handling upload");
+  if (!index) {
+      request->_tempFile = SPIFFS.open("/" + filename, "w");
+  }
+  if (len) {
+      request->_tempFile.write(data, len);
+  }
+  if (final) {
+      request->_tempFile.close();
+      request->redirect("/files");
+  }
+  // listDir(SPIFFS, "/", 0);
+}
 
 void webServerSetup(){
 // Webserver setup responses
@@ -1055,18 +1055,21 @@ void webServerSetup(){
     }
   );
 
-  webServer.on("/upload-file", HTTP_GET, [](AsyncWebServerRequest* request) {
-// String html = <body><div><form method='POST' enctype='multipart/form-data' action='/upload'><input type='file' name='dummy'><button type='submit'>Send</button></form></div></body>;
+    webServer.on("/map.png", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/map.png", "image/png");  
+    }
+  );
 
-    String html = "<body><div><form method='post' action='/upload-file'><input type='file'><button>Send</button></form></div></body>";
+  webServer.on("/upload-file", HTTP_GET, [](AsyncWebServerRequest* request) {
+    String html = "<body><div><form method='POST' enctype='multipart/form-data' action='/upload'><input type='file' name='dummy'><button type='submit'>Send</button></form></div></body>";
     request->send(200, "text/html", html);
     });
 
-  webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest* request) {
-    AsyncWebServerResponse* response = request->beginResponse(200, "text/html", "File Uploaded");
-    response->addHeader("Connection", "close");
-    request->send(response);
-    }, handleUpload);
+      // upload a file to /upload-file
+  webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest * request) {
+    request->send(200);
+  }, handleUpload);
 
   webServer.onFileUpload(handleUpload);
 
