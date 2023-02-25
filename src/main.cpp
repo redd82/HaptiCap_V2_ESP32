@@ -20,6 +20,8 @@
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
 #define SENSORDATA_JSON_DOCSIZE 1024
 #define NROFWAYPOINTS 20
+#define NROFMAPS 8
+
 
 void setup();
 void setupIO();
@@ -111,6 +113,10 @@ struct Waypoints {
   float homeBase [2];
   float wayPoints [NROFWAYPOINTS][3];
 };
+
+struct MapList {
+  char map [NROFMAPS][3];
+}
 
 Config config;                         // <- global configuration object
 CalData caldata;
@@ -411,6 +417,10 @@ String humanReadableSize(const size_t bytes) {
     else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
     else if (bytes < (1024 * 1024 * 1024)) return String(bytes / 1024.0 / 1024.0) + " MB";
     else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
+}
+
+void updateMapDB(){
+
 }
 
 void saveConfigDataToJSON(){
@@ -871,19 +881,6 @@ void getInitialReadings(){
   saveSensorDataToJSON();
 }
 
-// void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-//   if(!index){
-//     Serial.printf("UploadStart: %s\n", filename.c_str());
-//   }
-//   for(size_t i=0; i<len; i++){
-//     Serial.write(data[i]);
-//   }
-//   if(final){
-//     Serial.printf("UploadEnd: %s, %u B\n", filename.c_str(), index+len);
-//   }
-//    listDir(SPIFFS, "/", 0);
-// }
-
 void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
   Serial.println("handling upload");
   if (!index) {
@@ -894,7 +891,8 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
   }
   if (final) {
       request->_tempFile.close();
-      request->redirect("/files");
+      updateMapDB();
+      request->redirect("/navigation/map-list");
   }
   // listDir(SPIFFS, "/", 0);
 }
