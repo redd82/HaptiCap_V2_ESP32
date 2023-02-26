@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<GroundOverlay>
+	<name>Home</name>
+	<color>a8ffffff</color>
+	<Icon>
+		<href>Home.png</href>
+		<viewBoundScale>0.75</viewBoundScale>
+	</Icon>
+	<LatLonBox>
+		<north>52.19301209757993</north>
+		<south>52.18883048150381</south>
+		<east>4.677687840684983</east>
+		<west>4.666920618692333</west>
+		<rotation>-0.8038232326507568</rotation>
+	</LatLonBox>
+</GroundOverlay>
+</kml>

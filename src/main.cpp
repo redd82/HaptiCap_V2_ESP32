@@ -19,7 +19,7 @@
 #define CALDATA_JSON_DOCSIZE 768
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
 #define SENSORDATA_JSON_DOCSIZE 1024
-#define MAPLIST_JSON_DOCSIZE 1024
+#define MAPLIST_JSON_DOCSIZE 1536
 #define NROFWAYPOINTS 20
 #define NROFMAPS 8
 
@@ -82,9 +82,8 @@ struct CalData {
 
 struct DebugSettings {
   bool debugHaptic = false;
-  bool debug2Telnet = false;
   bool debug2Serial = false;
-  bool debugData2Serial = false;
+  bool debugGPS2Serial = false;
 };
 
 struct SensorData {
@@ -114,17 +113,189 @@ struct Waypoints {
   float wayPoints [NROFWAYPOINTS][3];
 };
 
-struct MapList {
-  // id, name, country, area, mapfile, kmlfile, mapfile.json
-  char * map [NROFMAPS][5];
+struct SelectedMap {
+  // id, name, country, area, mapfile, kmlfile
+  int map_id; // 1
+  char map_name[16]; // "Test area"
+  char map_area[16]; // "Kaag en Braassem"
+  char map_country[16]; // "Netherlands"
+  char map_pngFile[16]; // "kaagenbraassem.png"
+  char map_kmlFile[16]; // "kaagenbraassem.kml"
 };
+
+StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
+StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
+StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
+StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
+DynamicJsonDocument mapListDoc(MAPLIST_JSON_DOCSIZE);
+JsonArray maps = mapListDoc.createNestedArray("maps");
+
+// {
+//   "maps": [
+//     {
+//       "id": 1,
+//       "name": "Test area",
+//       "area": "Kaag en Braassem",
+//       "country": "Netherlands",
+//       "pngFile": "kaagenbraassem.png",
+//       "kmlFile": "kaagenbraassem.kml"
+//     },
+//     {
+//       "id": 2,
+//       "name": "Borderwar 12",
+//       "area": "BW12",
+//       "country": "Czech Republic",
+//       "pngFile": "bw12.png",
+//       "kmlFile": "bw12.kml"
+//     },
+//     {
+//       "id": 3,
+//       "name": "Borderwar 13",
+//       "area": "BW13",
+//       "country": "Czech Republic",
+//       "pngFile": "bw13.png",
+//       "kmlFile": "bw13.kml"
+//     },
+//     {
+//       "id": 4,
+//       "name": "Borderwar 14",
+//       "area": "BW14",
+//       "country": "Czech Republic",
+//       "pngFile": "bw14.png",
+//       "kmlFile": "bw14.kml"
+//     },
+//     {
+//       "id": 5,
+//       "name": "Borderwar 15",
+//       "area": "BW15",
+//       "country": "Czech Republic",
+//       "pngFile": "bw15.png",
+//       "kmlFile": "bw15.kml"
+//     },
+//     {
+//       "id": 6,
+//       "name": "Borderwar 16",
+//       "area": "BW16",
+//       "country": "Czech Republic",
+//       "pngFile": "bw16.png",
+//       "kmlFile": "bw16.kml"
+//     },
+//     {
+//       "id": 7,
+//       "name": "Borderwar 17",
+//       "area": "BW17",
+//       "country": "Czech Republic",
+//       "pngFile": "bw17.png",
+//       "kmlFile": "bw17.kml"
+//     },
+//     {
+//       "id": 8,
+//       "name": "Borderwar 18",
+//       "area": "BW18",
+//       "country": "Czech Republic",
+//       "pngFile": "bw18.png",
+//       "kmlFile": "bw18.kml"
+//     }
+//   ]
+// }
+
+// StaticJsonDocument<768> doc;
+
+// DeserializationError error = deserializeJson(doc, input);
+
+// if (error) {
+//   Serial.print("deserializeJson() failed: ");
+//   Serial.println(error.c_str());
+//   return;
+// }
+
+// for (JsonObject map : doc["maps"].as<JsonArray>()) {
+
+//   int map_id = map["id"]; // 1, 2, 2
+//   const char* map_name = map["name"]; // "Test area", "Borderwar 12", "Borderwar 13"
+//   const char* map_area = map["area"]; // "Kaag en Braassem", "BW12", "BW13"
+//   const char* map_country = map["country"]; // "Netherlands", "Czech Republic", "Czech Republic"
+//   const char* map_pngFile = map["pngFile"]; // "kaagenbraassem.png", "bw12.png", "bw13.png"
+//   const char* map_kmlFile = map["kmlFile"]; // "kaagenbraassem.kml", "bw12.kml", "bw13.kml"
+
+// }
+
+// StaticJsonDocument<768> doc;
+
+// JsonArray maps = doc.createNestedArray("maps");
+
+// JsonObject maps_0 = maps.createNestedObject();
+// maps_0["id"] = 1;
+// maps_0["name"] = "Test area";
+// maps_0["area"] = "Kaag en Braassem";
+// maps_0["country"] = "Netherlands";
+// maps_0["pngFile"] = "kaagenbraassem.png";
+// maps_0["kmlFile"] = "kaagenbraassem.kml";
+
+// JsonObject maps_1 = maps.createNestedObject();
+// maps_1["id"] = 2;
+// maps_1["name"] = "Borderwar 12";
+// maps_1["area"] = "BW12";
+// maps_1["country"] = "Czech Republic";
+// maps_1["pngFile"] = "bw12.png";
+// maps_1["kmlFile"] = "bw12.kml";
+
+// JsonObject maps_2 = maps.createNestedObject();
+// maps_2["id"] = 3;
+// maps_2["name"] = "Borderwar 13";
+// maps_2["area"] = "BW13";
+// maps_2["country"] = "Czech Republic";
+// maps_2["pngFile"] = "bw13.png";
+// maps_2["kmlFile"] = "bw13.kml";
+
+// JsonObject maps_3 = maps.createNestedObject();
+// maps_3["id"] = 4;
+// maps_3["name"] = "Borderwar 14";
+// maps_3["area"] = "BW14";
+// maps_3["country"] = "Czech Republic";
+// maps_3["pngFile"] = "bw14.png";
+// maps_3["kmlFile"] = "bw14.kml";
+
+// JsonObject maps_4 = maps.createNestedObject();
+// maps_4["id"] = 5;
+// maps_4["name"] = "Borderwar 15";
+// maps_4["area"] = "BW15";
+// maps_4["country"] = "Czech Republic";
+// maps_4["pngFile"] = "bw15.png";
+// maps_4["kmlFile"] = "bw15.kml";
+
+// JsonObject maps_5 = maps.createNestedObject();
+// maps_5["id"] = 6;
+// maps_5["name"] = "Borderwar 16";
+// maps_5["area"] = "BW16";
+// maps_5["country"] = "Czech Republic";
+// maps_5["pngFile"] = "bw16.png";
+// maps_5["kmlFile"] = "bw16.kml";
+
+// JsonObject maps_6 = maps.createNestedObject();
+// maps_6["id"] = 7;
+// maps_6["name"] = "Borderwar 17";
+// maps_6["area"] = "BW17";
+// maps_6["country"] = "Czech Republic";
+// maps_6["pngFile"] = "bw17.png";
+// maps_6["kmlFile"] = "bw17.kml";
+
+// JsonObject maps_7 = maps.createNestedObject();
+// maps_7["id"] = 8;
+// maps_7["name"] = "Borderwar 18";
+// maps_7["area"] = "BW18";
+// maps_7["country"] = "Czech Republic";
+// maps_7["pngFile"] = "bw18.png";
+// maps_7["kmlFile"] = "bw18.kml";
+
+// serializeJson(doc, output);
 
 Config config;                         // <- global configuration object
 CalData caldata;
 DebugSettings debugSettings;
 SensorData sensorData;
 Waypoints wayPoints;
-MapList mapList;
+SelectedMap selectedMap;
 
 // _PARAMS_
 const char* filename = "/hapticap.json";
@@ -137,6 +308,9 @@ String fileJs = "/";
 String fileJsMap = "/";
 String fileCss = "/";
 String fileCssMap = "/";
+bool cssJsFileNamesConcat = false;
+String uploadedPNGFile = "";
+String uploadedKMLFile = "";
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
@@ -223,9 +397,6 @@ int year;
 int intCounterWifi = 0;
 bool bUseTimerInterrupt = 1;
 bool bYouRang = 0;
-String proficiency;
-bool name_received = false;
-bool proficiency_received = false;
 bool bNoJSONfile = 0;
 bool bJSONnotvalid = 0;
 bool haptictouchT0 = 0;
@@ -262,12 +433,6 @@ void IRAM_ATTR onTimer2(){
 }
 
 // Make sensor and server objects
-StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
-StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
-StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
-StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
-StaticJsonDocument<MAPLIST_JSON_DOCSIZE> mapListDoc;
-
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
 MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
@@ -300,25 +465,6 @@ void callbackT3(){
   
 }
 
-// Replaces placeholder with value
-void notFound(AsyncWebServerRequest *request) {
-  request->send(404, "text/plain", "Not found");
-}
-
-String processor(const String& var){
-    if(var == "JSFILE"){
-          str2HTML = fileJs;
-          return str2HTML;
-     }else if (var == "CSSFILE"){
-          str2HTML = fileCss;
-          return str2HTML; 
-     }else if (var == "HOSTADDRESS"){
-          str2HTML = hostAddress;
-          return str2HTML; 
-     }
-    return String();
-}
-
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     int fileCounter = 0;
     String fileName = "";
@@ -344,19 +490,18 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
             Serial.print("  FILE: ");
             fileName = file.name();
             if(fileName.startsWith("main.")){
+              if(!cssJsFileNamesConcat){
                 if(fileName.endsWith(".js")){
                   fileJs.concat(file.name());
-                  Serial.print(fileJs);
                 } else if (fileName.endsWith(".js.map")){
                   fileJsMap.concat(file.name());
-                  Serial.print(fileJsMap);
                 } else if (fileName.endsWith(".css")){
                   fileCss.concat(file.name());
-                  Serial.print(fileCss);
                 } else if (fileName.endsWith(".css.map")){
                   fileCssMap.concat(file.name());
-                  Serial.print(fileCssMap);
                 }
+              }
+              Serial.print(file.name());
             }else {
               Serial.print(file.name());
             }
@@ -365,6 +510,7 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         }
         file = root.openNextFile();
     }
+    cssJsFileNamesConcat = true;
 }
 
 void printFile(fs::FS &fs, const char * path) {
@@ -393,6 +539,15 @@ String readFile(fs::FS &fs, const char * path){
   return fileContent;
 }
 
+void renameFile(fs::FS &fs, const char * path1, const char * path2){
+    Serial.printf("Renaming file %s to %s\r\n", path1, path2);
+    if (fs.rename(path1, path2)) {
+        Serial.println("- file renamed");
+    } else {
+        Serial.println("- rename failed");
+    }
+}
+
 void deleteFile(fs::FS &fs, const char * path){
     Serial.printf("Deleting file: %s\n", path);
     if(fs.remove(path)){
@@ -409,8 +564,49 @@ String humanReadableSize(const size_t bytes) {
     else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
 }
 
-void updateMapDB(){
+void updateMapDB(String fileBame){
 
+};
+
+String addMap2DB(String fileName){
+  String response = "";
+    if(fileName.endsWith(".png")){
+      uploadedPNGFile = fileName;
+    }else if (fileName.endsWith(".kml")){
+      uploadedKMLFile = fileName;
+      //renameFile(SPIFFS, "/hello.txt", "/foo.txt");
+      Serial.println(uploadedPNGFile + " uploaded.");
+      Serial.println(uploadedKMLFile + " uploaded.");
+      response = "Files uploaded.";
+    }else{
+      Serial.println("Wrong type of file.");
+      deleteFile(SPIFFS, fileName.c_str());
+      response = "Wrong filetype.";
+    }
+    return response; 
+}
+
+void removeMap2DB(String filenName, int id){
+    Serial.println("Updating mapDB");
+    renameFile(SPIFFS, "/hello.txt", "/foo.txt");
+}
+
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+  String response = "";
+  // Serial.println("handling upload");
+  if (!index) {
+    request->_tempFile = SPIFFS.open("/" + filename, "w");
+  }
+  if (len) {
+    request->_tempFile.write(data, len);
+  }
+  if (final) {
+    request->_tempFile.close();
+    listDir(SPIFFS, "/", 0);
+    response = addMap2DB(filename);
+    //request->redirect("/navigation/map-list");
+    request->send(200, "application/json", response );
+  }
 }
 
 void saveConfigDataToJSON(){
@@ -565,8 +761,7 @@ void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &calda
  void saveDebugSettingsToJSON() {
   debugSettingsDoc["debugHaptic"] = debugSettings.debugHaptic;
   debugSettingsDoc["debug2Serial"] = debugSettings.debug2Serial;
-  debugSettingsDoc["debugData2Serial"] = debugSettings.debugData2Serial;  
-  debugSettingsDoc["debug2Telnet"] = debugSettings.debug2Telnet;
+  debugSettingsDoc["debugGPS2Serial"] = debugSettings.debugGPS2Serial;  
 }
 
 // Saves the configuration to a file
@@ -588,10 +783,9 @@ void saveDebugSettings(fs::FS &fs, const char * path, const DebugSettings &debug
 }
 
 void putJSONDebugSettingsInMemory() {
-  debugSettings.debugHaptic = debugSettingsDoc["debugHaptic"].as<int>();  
-  debugSettings.debug2Serial = debugSettingsDoc["debug2Serial"].as<int>();
-  debugSettings.debugData2Serial = debugSettingsDoc["debugData2Serial"].as<int>(); 
-  debugSettings.debug2Telnet = debugSettingsDoc["debug2Telnet"].as<int>(); 
+  debugSettings.debugHaptic = debugSettingsDoc["debugHaptic"].as<bool>();  
+  debugSettings.debug2Serial = debugSettingsDoc["debug2Serial"].as<bool>();
+  debugSettings.debugGPS2Serial = debugSettingsDoc["debugGPS2Serial"].as<bool>(); 
 }
 
 // Loads the debug settings from a file
@@ -690,14 +884,12 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
   }
 }
 
-// Map List saving and loading
- void saveMapListToJSON() {
-  // mapListDoc["sensor"] = "gps";
-  // mapListDoc["time"] = GPSTimeMins;
-  // mapListDoc["ownLat"] = sensorData.ownLat;  
+// Map saving and loading
+ void saveSelectedMapToJSON() {
+ 
 }
 
-void saveMapList(fs::FS &fs, const char * path, const MapList &mapList) {
+void saveSelectedMap(fs::FS &fs, const char * path, const SelectedMap &selectedMap) {
   deleteFile(SPIFFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
@@ -705,7 +897,7 @@ void saveMapList(fs::FS &fs, const char * path, const MapList &mapList) {
     Serial.println(F("Failed to create file"));
     return;
   }
-  saveMapListToJSON();
+  saveSelectedMapToJSON();
   if (serializeJson(mapListDoc, file) == 0) {
     Serial.println(F("Failed to write to file"));
   }else{
@@ -714,14 +906,11 @@ void saveMapList(fs::FS &fs, const char * path, const MapList &mapList) {
   file.close();
 }
 
-void putJSONMapListInMemory() {
-  // String temp = mapListDoc["sensor"];
-  // temp.toCharArray(mapListDoc., 8);  
-  // mapListDoc.gpsTime = mapListDoc["gpsTime"].as<int>();
-  // mapListDoc.ownLat = mapListDoc["ownLat"].as<double>(); 
+void putJSONSelectedMapInMemory() {
+
 }
 
-void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, MapList &mapList) {
+void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, SelectedMap &selectedMap) {
   Serial.println(F("Loading debug settings..."));
   File file = fs.open(path, FILE_READ);
   delay(10);
@@ -730,9 +919,9 @@ void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, MapList &mapList) {
   if (error){
     Serial.println(F("Failed to read file, using default debug settings."));
     Serial.println(error.c_str());
-    saveMapList(SPIFFS, path, mapList);
+    saveSelectedMap(SPIFFS, path, selectedMap);
   }else{
-  putJSONMapListInMemory();
+  putJSONSelectedMapInMemory();
   file.close();
   }
 }
@@ -916,20 +1105,19 @@ void getInitialReadings(){
   saveSensorDataToJSON();
 }
 
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-  Serial.println("handling upload");
-  if (!index) {
-    request->_tempFile = SPIFFS.open("/" + filename, "w");
-  }
-  if (len) {
-    request->_tempFile.write(data, len);
-  }
-  if (final) {
-    request->_tempFile.close();
-    updateMapDB();
-    request->redirect("/navigation/map-list");
-  }
-  // listDir(SPIFFS, "/", 0);
+// Replaces placeholder with value
+String processor(const String& var){
+    if(var == "JSFILE"){
+          str2HTML = fileJs;
+          return str2HTML;
+     }else if (var == "CSSFILE"){
+          str2HTML = fileCss;
+          return str2HTML; 
+     }else if (var == "HOSTADDRESS"){
+          str2HTML = hostAddress;
+          return str2HTML; 
+     }
+    return String();
 }
 
 void webServerSetup(){
@@ -984,16 +1172,17 @@ void webServerSetup(){
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
             {
+                // /navigation/register-map"
                 if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
                 {
                     JsonObject obj = mapListDoc.as<JsonObject>();
-                    putJSONDebugSettingsInMemory();
-                    saveMapList(SPIFFS, filename_debug, mapList);
+                    putJSONSelectedMapInMemory();
+                    saveSelectedMap(SPIFFS, filename_debug, selectedMap);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             }
 
-            // /navigation/register-map"
+            
         }
     );
 
@@ -1036,6 +1225,13 @@ void webServerSetup(){
   webServer.on("/getGPSDate", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(200, "application/json", "{ \"GPSDate\" : \"" + GPSDate + "\" }");
+    }
+  );
+
+    webServer.on("/getDeviceName", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String deviceName = config.deviceName;
+      request->send(200, "application/json", "{ \"deviceName\" : \"" + deviceName + "\" }");
     }
   );
 
