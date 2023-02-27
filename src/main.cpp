@@ -1295,9 +1295,9 @@ void webServerSetup(){
     }
   );
 
-    webServer.on("/map.png", HTTP_GET, [](AsyncWebServerRequest *request)
+    webServer.on("/Home.png", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/map.png", "image/png");  
+      request->send(SPIFFS, "/Home.png", "image/png");  
     }
   );
 
