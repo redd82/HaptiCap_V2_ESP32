@@ -298,19 +298,25 @@ Waypoints wayPoints;
 SelectedMap selectedMap;
 
 // _PARAMS_
-const char* filename = "/hapticap.json";
-const char* filename_cal = "/caldata.json";
-const char* filename_debug = "/debug.json";
-const char* filename_sensordata = "/sensordata.json";
-const char* filename_waypoints = "/waypoints.json";
-const char* filename_mapData = "/mapData.json";
+String filename = "/hapticap.json";
+String filename_cal = "/caldata.json";
+String filename_debug = "/debug.json";
+String filename_sensordata = "/sensordata.json";
+String filename_waypoints = "/waypoints.json";
+String filename_mapData = "/mapData.json";
 String fileJs = "/";
 String fileJsMap = "/";
 String fileCss = "/";
 String fileCssMap = "/";
 bool cssJsFileNamesConcat = false;
+String rootDir = "/";
+String mapsDir = "/maps";
+String appDir = "/app";
+String jsonDir = "/json";
 String uploadedPNGFile = "";
 String uploadedKMLFile = "";
+String currentMap = "";
+String previousMap = "";
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
@@ -319,10 +325,10 @@ char waypointCardinal[8];
 char cardinal2home[8];
 
 // _Interrupts_
-int interrupt0;
-int interrupt1;
-int interrupt2;
-int totalInterruptCounter;
+volatile int interrupt0;
+volatile int interrupt1;
+volatile int interrupt2;
+volatile int totalInterruptCounter;
 
 // _Timers_
 hw_timer_t *timer0 = NULL;
@@ -466,6 +472,37 @@ void callbackT3(){
 }
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    Serial.printf("Listing directory: %s\r\n", dirname);
+
+    File root = fs.open(dirname);
+    if(!root){
+        Serial.println("- failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        Serial.println(" - not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            Serial.print("  DIR : ");
+            Serial.println(file.name());
+            if(levels){
+                listDir(fs, file.path(), levels -1);
+            }
+        } else {
+            Serial.print("  FILE: ");
+            Serial.print(file.name());
+            Serial.print("\tSIZE: ");
+            Serial.println(file.size());
+        }
+        file = root.openNextFile();
+    }
+}
+
+void listDirRoot(fs::FS &fs, const char * dirname, uint8_t levels){
     int fileCounter = 0;
     String fileName = "";
     Serial.printf("Listing directory: %s\r\n", dirname);
@@ -493,12 +530,16 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
               if(!cssJsFileNamesConcat){
                 if(fileName.endsWith(".js")){
                   fileJs.concat(file.name());
+                  //Serial.println(fileJs);
                 } else if (fileName.endsWith(".js.map")){
                   fileJsMap.concat(file.name());
+                  //Serial.println(fileJsMap);
                 } else if (fileName.endsWith(".css")){
                   fileCss.concat(file.name());
+                  //Serial.println(fileCss);
                 } else if (fileName.endsWith(".css.map")){
                   fileCssMap.concat(file.name());
+                  //Serial.println(fileCssMap);
                 }
               }
               Serial.print(file.name());
@@ -511,6 +552,19 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         file = root.openNextFile();
     }
     cssJsFileNamesConcat = true;
+}
+
+void createDir(fs::FS &fs, const char * path){
+    Serial.printf("Creating Dir: %s\n", path);
+    File root = fs.open(path);
+    if((!root) || (!root.isDirectory())) {
+        if(fs.mkdir(path)){
+            Serial.println("Dir created");
+        } else {
+            Serial.println("mkdir failed");
+        }
+        return;
+    }
 }
 
 void printFile(fs::FS &fs, const char * path) {
@@ -591,20 +645,22 @@ void removeMap2DB(String filenName, int id){
     renameFile(SPIFFS, "/hello.txt", "/foo.txt");
 }
 
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t index, uint8_t *data, size_t len, bool final){
   String response = "";
   // Serial.println("handling upload");
   if (!index) {
-    request->_tempFile = SPIFFS.open("/" + filename, "w");
+  // String fileForDeletion = "/" + filename;
+  // const char * temp = fileForDeletion.c_str();
+    // deleteFile(SPIFFS, temp);
+    request->_tempFile = SPIFFS.open(mapsDir + "/" + filenameLocal, "w");
   }
   if (len) {
     request->_tempFile.write(data, len);
   }
   if (final) {
     request->_tempFile.close();
-    listDir(SPIFFS, "/", 0);
-    response = addMap2DB(filename);
-    //request->redirect("/navigation/map-list");
+    listDir(SPIFFS, mapsDir.c_str(), 0);
+    response = addMap2DB(filenameLocal);
     request->send(200, "application/json", response );
   }
 }
@@ -680,7 +736,7 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
   if (error){
     Serial.println(F("Failed to read file, using default configuration"));
     Serial.println(error.c_str());
-    saveConfiguration(SPIFFS, filename, config);
+    saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
   }else{
   putJSONConfigDataInMemory();
   file.close();
@@ -1131,7 +1187,7 @@ void webServerSetup(){
 
     webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      saveConfiguration(SPIFFS, filename, config);
+      saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
       esp_restart();
     }
   );
@@ -1145,7 +1201,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = configDoc.as<JsonObject>();
                     putJSONConfigDataInMemory();
-                    saveConfiguration(SPIFFS, filename, config);
+                    saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
                     if(config.asAP){
                       delay(1000);
                       esp_restart();
@@ -1158,7 +1214,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = calDataDoc.as<JsonObject>();
                     putJSONCalibrationDataInMemory();
-                    saveCalibrationData(SPIFFS, filename_cal, caldata);
+                    saveCalibrationData(SPIFFS, (jsonDir + filename_cal).c_str(), caldata);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
@@ -1167,7 +1223,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = debugSettingsDoc.as<JsonObject>();
                     putJSONDebugSettingsInMemory();
-                    saveDebugSettings(SPIFFS, filename_debug, debugSettings);
+                    saveDebugSettings(SPIFFS, (jsonDir + filename_debug).c_str(), debugSettings);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
@@ -1177,7 +1233,17 @@ void webServerSetup(){
                 {
                     JsonObject obj = mapListDoc.as<JsonObject>();
                     putJSONSelectedMapInMemory();
-                    saveSelectedMap(SPIFFS, filename_debug, selectedMap);
+                    saveSelectedMap(SPIFFS, (jsonDir + filename_mapData).c_str(), selectedMap);
+                }
+                request->send(200, "application/json", "{ \"status\": 0 }");
+            } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
+            {
+                // /navigation/register-map"
+                if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+                {
+                    JsonObject obj = mapListDoc.as<JsonObject>();
+                    putJSONSelectedMapInMemory();
+                    saveSelectedMap(SPIFFS, (jsonDir + filename_mapData).c_str(), selectedMap);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             }
@@ -1207,6 +1273,13 @@ void webServerSetup(){
   webServer.on(fileJsMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(SPIFFS, fileJsMap.c_str(), "application/javascript");
+    }
+  );
+
+    webServer.on("/listFiles", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      listDir(SPIFFS, mapsDir.c_str(), 0);
+      request->send(200, "application/json", "{ \"status\": 0 }");
     }
   );
 
@@ -1247,7 +1320,7 @@ void webServerSetup(){
     {
       sensorData.homeBaseLat = gps.location.lat();
       sensorData.homeBaseLon = gps.location.lng();
-      saveSensorData(SPIFFS, filename_sensordata, sensorData);
+      saveSensorData(SPIFFS, (jsonDir + filename_sensordata).c_str(), sensorData);
       request->send(200, "application/json", "{ \"status\": 0 }");
     }
   );
@@ -1255,19 +1328,25 @@ void webServerSetup(){
 
   webServer.on("/hapticap.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/hapticap.json", "application/json");
+      request->send(SPIFFS, "/json/hapticap.json", "application/json");
     }
   );
 
   webServer.on("/caldata.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/caldata.json", "application/json");
+      request->send(SPIFFS, "/json/caldata.json", "application/json");
     }
   );
 
     webServer.on("/debug.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/debug.json", "application/json");
+      request->send(SPIFFS, "/json/debug.json", "application/json");
+    }
+  );
+
+      webServer.on("/mapData.json", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(SPIFFS, "/json/mapData.json", "application/json");
     }
   );
 
@@ -1295,9 +1374,9 @@ void webServerSetup(){
     }
   );
 
-    webServer.on("/Home.png", HTTP_GET, [](AsyncWebServerRequest *request)
+    webServer.on("/Current.png", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/Home.png", "image/png");  
+      request->send(SPIFFS, "/Current.png", "image/png");  
     }
   );
 
@@ -1377,7 +1456,7 @@ void wifiSetup(){
       intCounterWifi++;
         if (intCounterWifi > 120){
           config.asAP = 1;
-          saveConfiguration(SPIFFS, filename, config);
+          saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
           delay(1000);
           ESP.restart();          
         }
@@ -1432,7 +1511,11 @@ void setup(){
       while (1)
         Serial.println("SPIFFS.begin() failed");
   } else {
-     listDir(SPIFFS, "/", 0);
+    createDir(SPIFFS, mapsDir.c_str());
+    createDir(SPIFFS, jsonDir.c_str());
+    listDir(SPIFFS, mapsDir.c_str(), 0);
+    listDir(SPIFFS, jsonDir.c_str(), 0);
+    listDirRoot(SPIFFS, "/", 0);
     Serial.print("SPIFFS Free: "); Serial.println(humanReadableSize((SPIFFS.totalBytes() - SPIFFS.usedBytes())));
     Serial.print("SPIFFS Used: "); Serial.println(humanReadableSize(SPIFFS.usedBytes()));
     Serial.print("SPIFFS Total: "); Serial.println(humanReadableSize(SPIFFS.totalBytes()));
@@ -1440,8 +1523,8 @@ void setup(){
 
   Serial.println();
   delay(1000);
-  loadConfiguration(SPIFFS, filename, config);
-  loadDebugSettings(SPIFFS, filename_debug, debugSettings);  
+  loadConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
+  loadDebugSettings(SPIFFS, (jsonDir + filename_debug).c_str(), debugSettings);  
   
   Serial.println();
   Serial.print("HaptiCap version: ");
@@ -1472,9 +1555,9 @@ void setup(){
 
   }
 
-loadCalibrationData(SPIFFS, filename_cal, caldata);
+loadCalibrationData(SPIFFS, (jsonDir + filename_cal).c_str(), caldata);
 delay(1000);
-loadSensorData(SPIFFS, filename_sensordata, sensorData);
+loadSensorData(SPIFFS, (jsonDir + filename_sensordata).c_str(), sensorData);
 getInitialReadings();
 timerAlarmEnable(timer0);
 //timerAlarmEnable(timer1);
