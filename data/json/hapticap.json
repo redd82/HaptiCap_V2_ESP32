@@ -1,0 +1,19 @@
+{
+    "asAP": false,
+    "clientSSID": "TrizNet_AP2",
+    "clientPasswd": "T0sh7b49",
+    "connectionTimeOut": 120,
+    "deviceName": "HaptiCap",
+    "apPasswd": "prutser00",
+    "gpsPollSec": "1",
+    "targetReached": "10",
+    "compPollMs": "100",
+    "compOffset": "123.00",
+    "declAngleRad": "0.02408554367800",
+    "sleepMins": "5",
+    "touchThreshold": "50",
+    "touchEnabled": true,
+    "maxDistance": "500",
+    "maxDelay": "1000",
+    "timeZoneOffset": "1"
+    }

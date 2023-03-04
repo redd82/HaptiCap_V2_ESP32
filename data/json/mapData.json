@@ -1,0 +1,12 @@
+{
+  "maps": [
+    {
+      "id": 1,
+      "name": "Test area",
+      "area": "Kaag en Braassem",
+      "country": "Netherlands",
+      "pngFile": "/maps/Home.png",
+      "kmlFile": "/maps/Home.kml"
+    }
+  ]
+}

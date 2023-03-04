@@ -3,7 +3,8 @@
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
 #include <DNSServer.h>
-#include "SPIFFS.h"
+#include "FS.h"
+#include <LittleFS.h>
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
 #include <MPU9250_WE.h>
@@ -11,6 +12,7 @@
 #include <string>
 #include "functions.h"
 
+#define FORMAT_LITTLEFS_IF_FAILED true
 #define SWVERSION 2.001
 #define MPU9250_ADDR 0x68
 #define MAX_SRV_CLIENTS 2
@@ -19,6 +21,7 @@
 #define CALDATA_JSON_DOCSIZE 768
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
 #define SENSORDATA_JSON_DOCSIZE 1024
+#define MAPRECIEVED_JSON_DOCSIZE 256
 #define MAPLIST_JSON_DOCSIZE 1536
 #define NROFWAYPOINTS 20
 #define NROFMAPS 8
@@ -128,7 +131,16 @@ StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
 StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
 StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
 DynamicJsonDocument mapListDoc(MAPLIST_JSON_DOCSIZE);
+StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> mapDataRecieved;
 JsonArray maps = mapListDoc.createNestedArray("maps");
+JsonObject maps_1 = maps.createNestedObject();
+JsonObject maps_2 = maps.createNestedObject();
+JsonObject maps_3 = maps.createNestedObject();
+JsonObject maps_4 = maps.createNestedObject();
+JsonObject maps_5 = maps.createNestedObject();
+JsonObject maps_6 = maps.createNestedObject();
+JsonObject maps_7 = maps.createNestedObject();
+JsonObject maps_8 = maps.createNestedObject();
 
 // {
 //   "maps": [
@@ -137,64 +149,8 @@ JsonArray maps = mapListDoc.createNestedArray("maps");
 //       "name": "Test area",
 //       "area": "Kaag en Braassem",
 //       "country": "Netherlands",
-//       "pngFile": "kaagenbraassem.png",
-//       "kmlFile": "kaagenbraassem.kml"
-//     },
-//     {
-//       "id": 2,
-//       "name": "Borderwar 12",
-//       "area": "BW12",
-//       "country": "Czech Republic",
-//       "pngFile": "bw12.png",
-//       "kmlFile": "bw12.kml"
-//     },
-//     {
-//       "id": 3,
-//       "name": "Borderwar 13",
-//       "area": "BW13",
-//       "country": "Czech Republic",
-//       "pngFile": "bw13.png",
-//       "kmlFile": "bw13.kml"
-//     },
-//     {
-//       "id": 4,
-//       "name": "Borderwar 14",
-//       "area": "BW14",
-//       "country": "Czech Republic",
-//       "pngFile": "bw14.png",
-//       "kmlFile": "bw14.kml"
-//     },
-//     {
-//       "id": 5,
-//       "name": "Borderwar 15",
-//       "area": "BW15",
-//       "country": "Czech Republic",
-//       "pngFile": "bw15.png",
-//       "kmlFile": "bw15.kml"
-//     },
-//     {
-//       "id": 6,
-//       "name": "Borderwar 16",
-//       "area": "BW16",
-//       "country": "Czech Republic",
-//       "pngFile": "bw16.png",
-//       "kmlFile": "bw16.kml"
-//     },
-//     {
-//       "id": 7,
-//       "name": "Borderwar 17",
-//       "area": "BW17",
-//       "country": "Czech Republic",
-//       "pngFile": "bw17.png",
-//       "kmlFile": "bw17.kml"
-//     },
-//     {
-//       "id": 8,
-//       "name": "Borderwar 18",
-//       "area": "BW18",
-//       "country": "Czech Republic",
-//       "pngFile": "bw18.png",
-//       "kmlFile": "bw18.kml"
+//       "pngFile": "/maps/Home.png",
+//       "kmlFile": "/maps/Home.kml"
 //     }
 //   ]
 // }
@@ -217,7 +173,6 @@ JsonArray maps = mapListDoc.createNestedArray("maps");
 //   const char* map_country = map["country"]; // "Netherlands", "Czech Republic", "Czech Republic"
 //   const char* map_pngFile = map["pngFile"]; // "kaagenbraassem.png", "bw12.png", "bw13.png"
 //   const char* map_kmlFile = map["kmlFile"]; // "kaagenbraassem.kml", "bw12.kml", "bw13.kml"
-
 // }
 
 // StaticJsonDocument<768> doc;
@@ -315,6 +270,8 @@ String appDir = "/app";
 String jsonDir = "/json";
 String uploadedPNGFile = "";
 String uploadedKMLFile = "";
+String selectedMapPNG = "";
+String selectedMapKML = "";
 String currentMap = "";
 String previousMap = "";
 static const uint32_t GPSBaud = 9600;
@@ -603,7 +560,6 @@ void renameFile(fs::FS &fs, const char * path1, const char * path2){
 }
 
 void deleteFile(fs::FS &fs, const char * path){
-    Serial.printf("Deleting file: %s\n", path);
     if(fs.remove(path)){
         Serial.println("File deleted");
     } else {
@@ -616,53 +572,6 @@ String humanReadableSize(const size_t bytes) {
     else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
     else if (bytes < (1024 * 1024 * 1024)) return String(bytes / 1024.0 / 1024.0) + " MB";
     else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
-}
-
-void updateMapDB(String fileBame){
-
-};
-
-String addMap2DB(String fileName){
-  String response = "";
-    if(fileName.endsWith(".png")){
-      uploadedPNGFile = fileName;
-    }else if (fileName.endsWith(".kml")){
-      uploadedKMLFile = fileName;
-      //renameFile(SPIFFS, "/hello.txt", "/foo.txt");
-      Serial.println(uploadedPNGFile + " uploaded.");
-      Serial.println(uploadedKMLFile + " uploaded.");
-      response = "Files uploaded.";
-    }else{
-      Serial.println("Wrong type of file.");
-      deleteFile(SPIFFS, fileName.c_str());
-      response = "Wrong filetype.";
-    }
-    return response; 
-}
-
-void removeMap2DB(String filenName, int id){
-    Serial.println("Updating mapDB");
-    renameFile(SPIFFS, "/hello.txt", "/foo.txt");
-}
-
-void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t index, uint8_t *data, size_t len, bool final){
-  String response = "";
-  // Serial.println("handling upload");
-  if (!index) {
-  // String fileForDeletion = "/" + filename;
-  // const char * temp = fileForDeletion.c_str();
-    // deleteFile(SPIFFS, temp);
-    request->_tempFile = SPIFFS.open(mapsDir + "/" + filenameLocal, "w");
-  }
-  if (len) {
-    request->_tempFile.write(data, len);
-  }
-  if (final) {
-    request->_tempFile.close();
-    listDir(SPIFFS, mapsDir.c_str(), 0);
-    response = addMap2DB(filenameLocal);
-    request->send(200, "application/json", response );
-  }
 }
 
 void saveConfigDataToJSON(){
@@ -687,7 +596,7 @@ void saveConfigDataToJSON(){
 
 // Saves the configuration to a file
 void saveConfiguration(fs::FS &fs, const char * path, const Config &config) {
-  deleteFile(SPIFFS, path);
+  deleteFile(LittleFS, path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
     Serial.println(F("Failed to open file for writing."));
@@ -736,7 +645,7 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
   if (error){
     Serial.println(F("Failed to read file, using default configuration"));
     Serial.println(error.c_str());
-    saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
+    saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
   }else{
   putJSONConfigDataInMemory();
   file.close();
@@ -763,7 +672,7 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
 
 // Saves the configuration to a file
 void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) {
-  deleteFile(SPIFFS, path);
+  deleteFile(LittleFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
@@ -807,7 +716,7 @@ void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &calda
   if (error){
     Serial.println(F("Failed to read file, using default calibration data."));
     Serial.println(error.c_str());
-    saveCalibrationData(SPIFFS, path, caldata);
+    saveCalibrationData(LittleFS, path, caldata);
   }else{
   putJSONCalibrationDataInMemory();
   file.close();
@@ -822,7 +731,7 @@ void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &calda
 
 // Saves the configuration to a file
 void saveDebugSettings(fs::FS &fs, const char * path, const DebugSettings &debugSettings) {
-  deleteFile(SPIFFS, path);
+  deleteFile(LittleFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
@@ -854,7 +763,7 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
   if (error){
     Serial.println(F("Failed to read file, using default debug settings."));
     Serial.println(error.c_str());
-    saveDebugSettings(SPIFFS, path, debugSettings);
+    saveDebugSettings(LittleFS, path, debugSettings);
   }else{
   putJSONDebugSettingsInMemory();
   file.close();
@@ -883,7 +792,7 @@ void saveSensorDataToJSON() {
 
 // Saves the GPS data to a file
 void saveSensorData(fs::FS &fs, const char * path, const SensorData &sensorData) {
-  deleteFile(SPIFFS, path);
+  deleteFile(LittleFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
@@ -933,20 +842,166 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
   if (error){
     Serial.println(F("Failed to read file, using default debug settings."));
     Serial.println(error.c_str());
-    saveSensorData(SPIFFS, path, sensorData);
+    saveSensorData(LittleFS, path, sensorData);
   }else{
   putJSONSensorDataInMemory();
   file.close();
   }
 }
 
+void setMap1(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_1 = maps.createNestedObject();
+maps_1["id"] = 1;
+maps_1["name"] = name;
+maps_1["area"] = area;
+maps_1["country"] = country;
+maps_1["pngFile"] = mapsDir + pngFile;
+maps_1["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap2(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_2 = maps.createNestedObject();
+maps_2["id"] = 2;
+maps_2["name"] = name;
+maps_2["area"] = area;
+maps_2["country"] = country;
+maps_2["pngFile"] = mapsDir + pngFile;
+maps_2["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap3(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_3 = maps.createNestedObject();
+maps_3["id"] = 3;
+maps_3["name"] = name;
+maps_3["area"] = area;
+maps_3["country"] = country;
+maps_3["pngFile"] = mapsDir + pngFile;
+maps_3["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap4(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_4 = maps.createNestedObject();
+maps_4["id"] = 4;
+maps_4["name"] = name;
+maps_4["area"] = area;
+maps_4["country"] = country;
+maps_4["pngFile"] = mapsDir + pngFile;
+maps_4["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap5(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_5 = maps.createNestedObject();
+maps_5["id"] = 5;
+maps_5["name"] = name;
+maps_5["area"] = area;
+maps_5["country"] = country;
+maps_5["pngFile"] = mapsDir + pngFile;
+maps_5["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap6(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_6 = maps.createNestedObject();
+maps_6["id"] = 6;
+maps_6["name"] = name;
+maps_6["area"] = area;
+maps_6["country"] = country;
+maps_6["pngFile"] = mapsDir + pngFile;
+maps_6["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap7(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_7 = maps.createNestedObject();
+maps_7["id"] = 7;
+maps_7["name"] = name;
+maps_7["area"] = area;
+maps_7["country"] = country;
+maps_7["pngFile"] = mapsDir + pngFile;
+maps_7["kmlFile"] = mapsDir + kmlFile;
+}
+
+void setMap8(String name, String area, String country, String pngFile, String kmlFile){
+JsonObject maps_8 = maps.createNestedObject();
+maps_8["id"] = 8;
+maps_8["name"] = name;
+maps_8["area"] = area;
+maps_8["country"] = country;
+maps_8["pngFile"] = mapsDir + pngFile;
+maps_8["kmlFile"] = mapsDir + kmlFile;
+}
+
+void selectMapPosition(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile){
+  switch(mapSelector){
+    case 1:
+      setMap1(name, area, country, PNGFile, KMLFile);
+      break;
+    case 2:
+      setMap2(name, area, country, PNGFile, KMLFile);
+      break;
+    case 3:
+      setMap3(name, area, country, PNGFile, KMLFile);
+      break;
+    case 4:
+      setMap4(name, area, country, PNGFile, KMLFile);
+      break;
+    case 5:
+      setMap5(name, area, country, PNGFile, KMLFile);
+      break;
+    case 6:
+      setMap6(name, area, country, PNGFile, KMLFile);
+      break;
+    case 7:
+      setMap7(name, area, country, PNGFile, KMLFile);
+      break;
+    case 8:
+      setMap8(name, area, country, PNGFile, KMLFile);
+      break;            
+  }
+}
+
+String prepMapNameForMapDB(String fileName){
+  String response = "";
+    if(fileName.endsWith(".png")){
+      uploadedPNGFile = fileName;
+    }else if (fileName.endsWith(".kml")){
+      uploadedKMLFile = fileName;
+      Serial.println(uploadedPNGFile + " uploaded.");
+      Serial.println(uploadedKMLFile + " uploaded.");
+      response = "Files uploaded.";
+    }else{
+      Serial.println("Wrong type of file.");
+      deleteFile(LittleFS, fileName.c_str());
+      response = "Wrong filetype.";
+    }
+    return response; 
+}
+
+void updateMapDB(String PNGFile, String KMLFile, JsonObject obj){
+  int mapSelector = 1;
+  String name = obj["name"];
+  String area = obj["area"];
+  String country = obj["country"];
+  PNGFile = mapsDir + "/" + PNGFile;
+  KMLFile = mapsDir + "/" + KMLFile;
+  selectMapPosition(mapSelector, name, area, country, PNGFile, KMLFile);
+  Serial.println(name);
+  Serial.println(area);
+  Serial.println(country);
+  Serial.println(PNGFile);
+  Serial.println(KMLFile);
+};
+
+void removeMapFromDB(String filenName, int id){
+    Serial.println("Removing map from DB.");
+    deleteFile(LittleFS, filenName.c_str());
+}
+
 // Map saving and loading
  void saveSelectedMapToJSON() {
- 
+
 }
 
 void saveSelectedMap(fs::FS &fs, const char * path, const SelectedMap &selectedMap) {
-  deleteFile(SPIFFS, path);
+  deleteFile(LittleFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
@@ -975,7 +1030,7 @@ void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, SelectedMap &selectedM
   if (error){
     Serial.println(F("Failed to read file, using default debug settings."));
     Serial.println(error.c_str());
-    saveSelectedMap(SPIFFS, path, selectedMap);
+    saveSelectedMap(LittleFS, path, selectedMap);
   }else{
   putJSONSelectedMapInMemory();
   file.close();
@@ -1163,31 +1218,51 @@ void getInitialReadings(){
 
 // Replaces placeholder with value
 String processor(const String& var){
-    if(var == "JSFILE"){
-          str2HTML = fileJs;
-          return str2HTML;
-     }else if (var == "CSSFILE"){
-          str2HTML = fileCss;
-          return str2HTML; 
-     }else if (var == "HOSTADDRESS"){
-          str2HTML = hostAddress;
-          return str2HTML; 
-     }
-    return String();
+  if(var == "JSFILE"){
+        str2HTML = fileJs;
+        return str2HTML;
+    }else if (var == "CSSFILE"){
+        str2HTML = fileCss;
+        return str2HTML; 
+    }else if (var == "HOSTADDRESS"){
+        str2HTML = hostAddress;
+        return str2HTML; 
+    }
+  return String();
+}
+
+void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t index, uint8_t *data, size_t len, bool final){
+  String response = "";
+  // Serial.println("handling upload");
+  if (!index) {
+    String fileForDeletion = mapsDir + "/" + filenameLocal;
+    LittleFS.rename(fileForDeletion.c_str(), "/maps/temp.png");
+    request->_tempFile = LittleFS.open(mapsDir + "/" + filenameLocal, "w");
+  }
+  if (len) {
+    request->_tempFile.write(data, len);
+  }
+  if (final) {
+    request->_tempFile.close();
+    response = prepMapNameForMapDB(filenameLocal);
+    request->send(200, "application/json", response );
+    LittleFS.remove("/maps/temp.png");
+    listDir(LittleFS, mapsDir.c_str(), 0);
+  }
 }
 
 void webServerSetup(){
 // Webserver setup responses
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/index.html", String(), false, processor);
+      request->send(LittleFS, "/index.html", String(), false, processor);
       timerRestart(timer2);
     }
   );
 
-    webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
+      saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
       esp_restart();
     }
   );
@@ -1201,7 +1276,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = configDoc.as<JsonObject>();
                     putJSONConfigDataInMemory();
-                    saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
+                    saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
                     if(config.asAP){
                       delay(1000);
                       esp_restart();
@@ -1214,7 +1289,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = calDataDoc.as<JsonObject>();
                     putJSONCalibrationDataInMemory();
-                    saveCalibrationData(SPIFFS, (jsonDir + filename_cal).c_str(), caldata);
+                    saveCalibrationData(LittleFS, (jsonDir + filename_cal).c_str(), caldata);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
@@ -1223,7 +1298,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = debugSettingsDoc.as<JsonObject>();
                     putJSONDebugSettingsInMemory();
-                    saveDebugSettings(SPIFFS, (jsonDir + filename_debug).c_str(), debugSettings);
+                    saveDebugSettings(LittleFS, (jsonDir + filename_debug).c_str(), debugSettings);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
@@ -1232,53 +1307,51 @@ void webServerSetup(){
                 if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
                 {
                     JsonObject obj = mapListDoc.as<JsonObject>();
-                    putJSONSelectedMapInMemory();
-                    saveSelectedMap(SPIFFS, (jsonDir + filename_mapData).c_str(), selectedMap);
+                    updateMapDB(uploadedPNGFile, uploadedKMLFile, obj);
+                    // saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
             {
-                // /navigation/register-map"
+                // /navigation/request-map"
                 if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
                 {
                     JsonObject obj = mapListDoc.as<JsonObject>();
                     putJSONSelectedMapInMemory();
-                    saveSelectedMap(SPIFFS, (jsonDir + filename_mapData).c_str(), selectedMap);
+                    saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
-            }
-
-            
+            }     
         }
     );
 
   webServer.on(fileCss.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, fileCss.c_str(), "text/css");
+      request->send(LittleFS, fileCss.c_str(), "text/css");
     }
   );
 
   webServer.on(fileCssMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, fileCssMap.c_str(), "text/css");
+      request->send(LittleFS, fileCssMap.c_str(), "text/css");
     }
   );
 
   webServer.on(fileJs.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, fileJs.c_str(), "application/javascript");
+      request->send(LittleFS, fileJs.c_str(), "application/javascript");
     }
   );
 
   webServer.on(fileJsMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, fileJsMap.c_str(), "application/javascript");
+      request->send(LittleFS, fileJsMap.c_str(), "application/javascript");
     }
   );
 
     webServer.on("/listFiles", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      listDir(SPIFFS, mapsDir.c_str(), 0);
+      listDir(LittleFS, mapsDir.c_str(), 0);
       request->send(200, "application/json", "{ \"status\": 0 }");
     }
   );
@@ -1301,7 +1374,7 @@ void webServerSetup(){
     }
   );
 
-    webServer.on("/getDeviceName", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/getDeviceName", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       String deviceName = config.deviceName;
       request->send(200, "application/json", "{ \"deviceName\" : \"" + deviceName + "\" }");
@@ -1320,63 +1393,69 @@ void webServerSetup(){
     {
       sensorData.homeBaseLat = gps.location.lat();
       sensorData.homeBaseLon = gps.location.lng();
-      saveSensorData(SPIFFS, (jsonDir + filename_sensordata).c_str(), sensorData);
+      saveSensorData(LittleFS, (jsonDir + filename_sensordata).c_str(), sensorData);
       request->send(200, "application/json", "{ \"status\": 0 }");
     }
   );
 
-
   webServer.on("/hapticap.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/json/hapticap.json", "application/json");
+      request->send(LittleFS, "/json/hapticap.json", "application/json");
     }
   );
 
   webServer.on("/caldata.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/json/caldata.json", "application/json");
+      request->send(LittleFS, "/json/caldata.json", "application/json");
     }
   );
 
-    webServer.on("/debug.json", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/debug.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/json/debug.json", "application/json");
+      request->send(LittleFS, "/json/debug.json", "application/json");
     }
   );
 
-      webServer.on("/mapData.json", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/mapData.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/json/mapData.json", "application/json");
+      request->send(LittleFS, "/json/mapData.json", "application/json");
     }
   );
 
   webServer.on("/map1.jpg", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/map1.jpg", "image/jpeg");
+      request->send(LittleFS, "/map1.jpg", "image/jpeg");
     }
   );
 
   webServer.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/manifest.json", "application/json");  
+      request->send(LittleFS, "/manifest.json", "application/json");  
     }
   );
 
-    webServer.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/favicon.ico", "image/ico");  
+      request->send(LittleFS, "/favicon.ico", "image/ico");  
     }
   );
 
-    webServer.on("/logo192.png", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/logo192.png", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/logo192.png", "image/png");  
+      request->send(LittleFS, "/logo192.png", "image/png");  
     }
   );
 
-    webServer.on("/Current.png", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/deleteFile", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(SPIFFS, "/Current.png", "image/png");  
+      deleteFile(LittleFS, "/maps/BW12.png");
+      request->send(200, "application/json", "{ \"status\": 0 }"); 
+    }
+  );
+
+  webServer.on(selectedMapPNG.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, selectedMapPNG.c_str(), "image/png");  
     }
   );
 
@@ -1388,7 +1467,7 @@ void webServerSetup(){
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
     {
-    request->send(SPIFFS, "/redirect.html", String(), false, processor);
+    request->send(LittleFS, "/redirect.html", String(), false, processor);
     timerRestart(timer2);
     Serial.println("redirect called");
   });
@@ -1456,7 +1535,7 @@ void wifiSetup(){
       intCounterWifi++;
         if (intCounterWifi > 120){
           config.asAP = 1;
-          saveConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
+          saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
           delay(1000);
           ESP.restart();          
         }
@@ -1506,25 +1585,21 @@ void setup(){
   Serial2.begin(GPSBaud);
   delay(1000);
 
-  // Initialize SPIFFS
-  if(!SPIFFS.begin(true)){
-      while (1)
-        Serial.println("SPIFFS.begin() failed");
+// Initialize LittleFS
+if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+  Serial.println("Failed to mount LittleFS");
+  if (!LittleFS.begin(true /* true: format */)) {
+    Serial.println("Failed to format LittleFS");
   } else {
-    createDir(SPIFFS, mapsDir.c_str());
-    createDir(SPIFFS, jsonDir.c_str());
-    listDir(SPIFFS, mapsDir.c_str(), 0);
-    listDir(SPIFFS, jsonDir.c_str(), 0);
-    listDirRoot(SPIFFS, "/", 0);
-    Serial.print("SPIFFS Free: "); Serial.println(humanReadableSize((SPIFFS.totalBytes() - SPIFFS.usedBytes())));
-    Serial.print("SPIFFS Used: "); Serial.println(humanReadableSize(SPIFFS.usedBytes()));
-    Serial.print("SPIFFS Total: "); Serial.println(humanReadableSize(SPIFFS.totalBytes()));
+    Serial.println("LittleFS formatted successfully");
   }
+} else { // Initial mount success
+}
 
   Serial.println();
   delay(1000);
-  loadConfiguration(SPIFFS, (jsonDir + filename).c_str(), config);
-  loadDebugSettings(SPIFFS, (jsonDir + filename_debug).c_str(), debugSettings);  
+  loadConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
+  loadDebugSettings(LittleFS, (jsonDir + filename_debug).c_str(), debugSettings);  
   
   Serial.println();
   Serial.print("HaptiCap version: ");
@@ -1550,41 +1625,46 @@ void setup(){
   Serial.println("");
   magnometerSetup();
   
-  // Start server
-  if (SPIFFS.begin(true)) {
+  loadCalibrationData(LittleFS, (jsonDir + filename_cal).c_str(), caldata);
+  delay(1000);
+  loadSensorData(LittleFS, (jsonDir + filename_sensordata).c_str(), sensorData);
+  getInitialReadings();
+  timerAlarmEnable(timer0);
+  //timerAlarmEnable(timer1);
+  //timerAlarmEnable(timer2);
 
-  }
+  timerStart(timer0);
+  //timerStart(timer1);
+  //timerStart(timer2);  
 
-loadCalibrationData(SPIFFS, (jsonDir + filename_cal).c_str(), caldata);
-delay(1000);
-loadSensorData(SPIFFS, (jsonDir + filename_sensordata).c_str(), sensorData);
-getInitialReadings();
-timerAlarmEnable(timer0);
-//timerAlarmEnable(timer1);
-//timerAlarmEnable(timer2);
+  if(!config.asAP){
+    Serial.print("IP address: ");
+    Serial.println(ipAddress);
+    Serial.print("Host address: ");
+    Serial.println(hostAddress);
+    }else{
+      dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
+      Serial.print("DNS Started on port.");
+      Serial.println(config.dns_port);
+    }
 
-timerStart(timer0);
-//timerStart(timer1);
-//timerStart(timer2);  
+  webServerSetup();
+  delay(1000);
+  Serial.print("HaptiCap ready @ ");
+  Serial.println(getGPSTimeMinsSecs() + " " + getGPSDate());
+  Serial.print("Satellites: ");
+  Serial.println(sensorData.nrOfSatellites);
 
-if(!config.asAP){
-  Serial.print("IP address: ");
-  Serial.println(ipAddress);
-  Serial.print("Host address: ");
-  Serial.println(hostAddress);
-  }else{
-    dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
-    Serial.print("DNS Started on port.");
-    Serial.println(config.dns_port);
-  }
-
-webServerSetup();
-delay(1000);
-Serial.print("HaptiCap ready @ ");
-Serial.println(getGPSTimeMinsSecs() + " " + getGPSDate());
-Serial.print("Satellites: ");
-Serial.println(sensorData.nrOfSatellites);
-startup = true;
+  // void setMap0(String name, String area, String country, String pngFile, String kmlFile){
+  // JsonObject maps_0 = maps.createNestedObject();
+  // maps_0["id"] = 1;
+  // maps_0["name"] = name;
+  // maps_0["area"] = area;
+  // maps_0["country"] = country;
+  // maps_0["pngFile"] = mapsDir + pngFile;
+  // maps_0["kmlFile"] = mapsDir + kmlFile;
+  // }
+  startup = true;
 }
  
 void loop(){
