@@ -130,8 +130,8 @@ StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
 StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
 StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
 StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
-DynamicJsonDocument mapListDoc(MAPLIST_JSON_DOCSIZE);
-StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> mapDataRecieved;
+StaticJsonDocument <MAPLIST_JSON_DOCSIZE> mapListDoc;
+StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> selectedMap;
 JsonArray maps = mapListDoc.createNestedArray("maps");
 JsonObject maps_1 = maps.createNestedObject();
 JsonObject maps_2 = maps.createNestedObject();
@@ -154,96 +154,6 @@ JsonObject maps_8 = maps.createNestedObject();
 //     }
 //   ]
 // }
-
-// StaticJsonDocument<768> doc;
-
-// DeserializationError error = deserializeJson(doc, input);
-
-// if (error) {
-//   Serial.print("deserializeJson() failed: ");
-//   Serial.println(error.c_str());
-//   return;
-// }
-
-// for (JsonObject map : doc["maps"].as<JsonArray>()) {
-
-//   int map_id = map["id"]; // 1, 2, 2
-//   const char* map_name = map["name"]; // "Test area", "Borderwar 12", "Borderwar 13"
-//   const char* map_area = map["area"]; // "Kaag en Braassem", "BW12", "BW13"
-//   const char* map_country = map["country"]; // "Netherlands", "Czech Republic", "Czech Republic"
-//   const char* map_pngFile = map["pngFile"]; // "kaagenbraassem.png", "bw12.png", "bw13.png"
-//   const char* map_kmlFile = map["kmlFile"]; // "kaagenbraassem.kml", "bw12.kml", "bw13.kml"
-// }
-
-// StaticJsonDocument<768> doc;
-
-// JsonArray maps = doc.createNestedArray("maps");
-
-// JsonObject maps_0 = maps.createNestedObject();
-// maps_0["id"] = 1;
-// maps_0["name"] = "Test area";
-// maps_0["area"] = "Kaag en Braassem";
-// maps_0["country"] = "Netherlands";
-// maps_0["pngFile"] = "kaagenbraassem.png";
-// maps_0["kmlFile"] = "kaagenbraassem.kml";
-
-// JsonObject maps_1 = maps.createNestedObject();
-// maps_1["id"] = 2;
-// maps_1["name"] = "Borderwar 12";
-// maps_1["area"] = "BW12";
-// maps_1["country"] = "Czech Republic";
-// maps_1["pngFile"] = "bw12.png";
-// maps_1["kmlFile"] = "bw12.kml";
-
-// JsonObject maps_2 = maps.createNestedObject();
-// maps_2["id"] = 3;
-// maps_2["name"] = "Borderwar 13";
-// maps_2["area"] = "BW13";
-// maps_2["country"] = "Czech Republic";
-// maps_2["pngFile"] = "bw13.png";
-// maps_2["kmlFile"] = "bw13.kml";
-
-// JsonObject maps_3 = maps.createNestedObject();
-// maps_3["id"] = 4;
-// maps_3["name"] = "Borderwar 14";
-// maps_3["area"] = "BW14";
-// maps_3["country"] = "Czech Republic";
-// maps_3["pngFile"] = "bw14.png";
-// maps_3["kmlFile"] = "bw14.kml";
-
-// JsonObject maps_4 = maps.createNestedObject();
-// maps_4["id"] = 5;
-// maps_4["name"] = "Borderwar 15";
-// maps_4["area"] = "BW15";
-// maps_4["country"] = "Czech Republic";
-// maps_4["pngFile"] = "bw15.png";
-// maps_4["kmlFile"] = "bw15.kml";
-
-// JsonObject maps_5 = maps.createNestedObject();
-// maps_5["id"] = 6;
-// maps_5["name"] = "Borderwar 16";
-// maps_5["area"] = "BW16";
-// maps_5["country"] = "Czech Republic";
-// maps_5["pngFile"] = "bw16.png";
-// maps_5["kmlFile"] = "bw16.kml";
-
-// JsonObject maps_6 = maps.createNestedObject();
-// maps_6["id"] = 7;
-// maps_6["name"] = "Borderwar 17";
-// maps_6["area"] = "BW17";
-// maps_6["country"] = "Czech Republic";
-// maps_6["pngFile"] = "bw17.png";
-// maps_6["kmlFile"] = "bw17.kml";
-
-// JsonObject maps_7 = maps.createNestedObject();
-// maps_7["id"] = 8;
-// maps_7["name"] = "Borderwar 18";
-// maps_7["area"] = "BW18";
-// maps_7["country"] = "Czech Republic";
-// maps_7["pngFile"] = "bw18.png";
-// maps_7["kmlFile"] = "bw18.kml";
-
-// serializeJson(doc, output);
 
 Config config;                         // <- global configuration object
 CalData caldata;
@@ -274,6 +184,7 @@ String selectedMapPNG = "";
 String selectedMapKML = "";
 String currentMap = "";
 String previousMap = "";
+int mapSelector = 1;
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
@@ -849,6 +760,101 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
   }
 }
 
+// Read info from json
+// StaticJsonDocument<768> doc;
+// DeserializationError error = deserializeJson(doc, input);
+
+// if (error) {
+//   Serial.print("deserializeJson() failed: ");
+//   Serial.println(error.c_str());
+//   return;
+// }
+
+// for (JsonObject map : doc["maps"].as<JsonArray>()) {
+
+//   int map_id = map["id"]; // 1, 2, 2
+//   const char* map_name = map["name"]; // "Test area", "Borderwar 12", "Borderwar 13"
+//   const char* map_area = map["area"]; // "Kaag en Braassem", "BW12", "BW13"
+//   const char* map_country = map["country"]; // "Netherlands", "Czech Republic", "Czech Republic"
+//   const char* map_pngFile = map["pngFile"]; // "kaagenbraassem.png", "bw12.png", "bw13.png"
+//   const char* map_kmlFile = map["kmlFile"]; // "kaagenbraassem.kml", "bw12.kml", "bw13.kml"
+// }
+
+// Put info in json
+// StaticJsonDocument<768> doc;
+// JsonArray maps = doc.createNestedArray("maps");
+
+// JsonObject maps_0 = maps.createNestedObject();
+// maps_0["id"] = 1;
+// maps_0["name"] = "Test area";
+// maps_0["area"] = "Kaag en Braassem";
+// maps_0["country"] = "Netherlands";
+// maps_0["pngFile"] = "kaagenbraassem.png";
+// maps_0["kmlFile"] = "kaagenbraassem.kml";
+
+// JsonObject maps_1 = maps.createNestedObject();
+// maps_1["id"] = 2;
+// maps_1["name"] = "Borderwar 12";
+// maps_1["area"] = "BW12";
+// maps_1["country"] = "Czech Republic";
+// maps_1["pngFile"] = "bw12.png";
+// maps_1["kmlFile"] = "bw12.kml";
+
+// JsonObject maps_2 = maps.createNestedObject();
+// maps_2["id"] = 3;
+// maps_2["name"] = "Borderwar 13";
+// maps_2["area"] = "BW13";
+// maps_2["country"] = "Czech Republic";
+// maps_2["pngFile"] = "bw13.png";
+// maps_2["kmlFile"] = "bw13.kml";
+
+// JsonObject maps_3 = maps.createNestedObject();
+// maps_3["id"] = 4;
+// maps_3["name"] = "Borderwar 14";
+// maps_3["area"] = "BW14";
+// maps_3["country"] = "Czech Republic";
+// maps_3["pngFile"] = "bw14.png";
+// maps_3["kmlFile"] = "bw14.kml";
+
+// JsonObject maps_4 = maps.createNestedObject();
+// maps_4["id"] = 5;
+// maps_4["name"] = "Borderwar 15";
+// maps_4["area"] = "BW15";
+// maps_4["country"] = "Czech Republic";
+// maps_4["pngFile"] = "bw15.png";
+// maps_4["kmlFile"] = "bw15.kml";
+
+// JsonObject maps_5 = maps.createNestedObject();
+// maps_5["id"] = 6;
+// maps_5["name"] = "Borderwar 16";
+// maps_5["area"] = "BW16";
+// maps_5["country"] = "Czech Republic";
+// maps_5["pngFile"] = "bw16.png";
+// maps_5["kmlFile"] = "bw16.kml";
+
+// JsonObject maps_6 = maps.createNestedObject();
+// maps_6["id"] = 7;
+// maps_6["name"] = "Borderwar 17";
+// maps_6["area"] = "BW17";
+// maps_6["country"] = "Czech Republic";
+// maps_6["pngFile"] = "bw17.png";
+// maps_6["kmlFile"] = "bw17.kml";
+
+// JsonObject maps_7 = maps.createNestedObject();
+// maps_7["id"] = 8;
+// maps_7["name"] = "Borderwar 18";
+// maps_7["area"] = "BW18";
+// maps_7["country"] = "Czech Republic";
+// maps_7["pngFile"] = "bw18.png";
+// maps_7["kmlFile"] = "bw18.kml";
+
+// serializeJson(doc, output);
+
+int findFreeSpotForMap(){
+  int chosenMap = 1;
+  return chosenMap;
+}
+
 void setMap1(String name, String area, String country, String pngFile, String kmlFile){
 JsonObject maps_1 = maps.createNestedObject();
 maps_1["id"] = 1;
@@ -929,7 +935,8 @@ maps_8["pngFile"] = mapsDir + pngFile;
 maps_8["kmlFile"] = mapsDir + kmlFile;
 }
 
-void selectMapPosition(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile){
+void saveMapInPosition(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile){
+
   switch(mapSelector){
     case 1:
       setMap1(name, area, country, PNGFile, KMLFile);
@@ -975,14 +982,14 @@ String prepMapNameForMapDB(String fileName){
     return response; 
 }
 
-void updateMapDB(String PNGFile, String KMLFile, JsonObject obj){
-  int mapSelector = 1;
+void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
   String name = obj["name"];
   String area = obj["area"];
   String country = obj["country"];
   PNGFile = mapsDir + "/" + PNGFile;
   KMLFile = mapsDir + "/" + KMLFile;
-  selectMapPosition(mapSelector, name, area, country, PNGFile, KMLFile);
+  mapSelector = findFreeSpotForMap();
+  saveMapInPosition(mapSelector, name, area, country, PNGFile, KMLFile);
   Serial.println(name);
   Serial.println(area);
   Serial.println(country);
@@ -1307,18 +1314,19 @@ void webServerSetup(){
                 if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
                 {
                     JsonObject obj = mapListDoc.as<JsonObject>();
-                    updateMapDB(uploadedPNGFile, uploadedKMLFile, obj);
+                    addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
                     // saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
+                    //mapSelector = mapSelector + 1;
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
             {
                 // /navigation/request-map"
-                if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+                if (DeserializationError::Ok == deserializeJson(selectedMap, (const char*)data))
                 {
-                    JsonObject obj = mapListDoc.as<JsonObject>();
+                    //JsonObject obj = mapListDoc.as<JsonObject>();
                     putJSONSelectedMapInMemory();
-                    saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
+                    //saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             }     
@@ -1654,16 +1662,7 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   Serial.println(getGPSTimeMinsSecs() + " " + getGPSDate());
   Serial.print("Satellites: ");
   Serial.println(sensorData.nrOfSatellites);
-
-  // void setMap0(String name, String area, String country, String pngFile, String kmlFile){
-  // JsonObject maps_0 = maps.createNestedObject();
-  // maps_0["id"] = 1;
-  // maps_0["name"] = name;
-  // maps_0["area"] = area;
-  // maps_0["country"] = country;
-  // maps_0["pngFile"] = mapsDir + pngFile;
-  // maps_0["kmlFile"] = mapsDir + kmlFile;
-  // }
+  saveMapInPosition(1, "Home", "kaag en Braassem", "Netherlands", "Home.png", "Home.kml");
   startup = true;
 }
  
