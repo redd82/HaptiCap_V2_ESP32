@@ -7,6 +7,56 @@
       "country": "Netherlands",
       "pngFile": "/maps/Home.png",
       "kmlFile": "/maps/Home.kml"
+    },
+    {
+      "id": 2,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
+    },    {
+      "id": 3,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
+    },    {
+      "id": 4,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
+    },    {
+      "id": 5,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
+    },    {
+      "id": 6,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
+    },    {
+      "id": 7,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
+    },    {
+      "id": 8,
+      "name": "NoMap",
+      "area": "NoMap",
+      "country": "NoMap",
+      "pngFile": "/maps/NoMap.png",
+      "kmlFile": "/maps/NoMap.kml"
     }
   ]
 }

@@ -131,7 +131,7 @@ StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
 StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
 StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
 StaticJsonDocument <MAPLIST_JSON_DOCSIZE> mapListDoc;
-StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> selectedMap;
+StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> selectedMapJSON;
 JsonArray maps = mapListDoc.createNestedArray("maps");
 JsonObject maps_1 = maps.createNestedObject();
 JsonObject maps_2 = maps.createNestedObject();
@@ -163,12 +163,12 @@ Waypoints wayPoints;
 SelectedMap selectedMap;
 
 // _PARAMS_
-String filename = "/hapticap.json";
-String filename_cal = "/caldata.json";
-String filename_debug = "/debug.json";
-String filename_sensordata = "/sensordata.json";
-String filename_waypoints = "/waypoints.json";
-String filename_mapData = "/mapData.json";
+String fileConfigJSON = "/hapticap.json";
+String fileCalDataJSON = "/caldata.json";
+String fileDebugJSON = "/debug.json";
+String fileSensorDataJSON = "/sensordata.json";
+String fileWayPointDataJSON = "/waypoints.json";
+String fileMapDataJSON = "/mapData.json";
 String fileJs = "/";
 String fileJsMap = "/";
 String fileCss = "/";
@@ -370,7 +370,7 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     }
 }
 
-void listDirRoot(fs::FS &fs, const char * dirname, uint8_t levels){
+void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels){
     int fileCounter = 0;
     String fileName = "";
     Serial.printf("Listing directory: %s\r\n", dirname);
@@ -556,7 +556,7 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
   if (error){
     Serial.println(F("Failed to read file, using default configuration"));
     Serial.println(error.c_str());
-    saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
+    saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
   }else{
   putJSONConfigDataInMemory();
   file.close();
@@ -745,13 +745,13 @@ void putJSONSensorDataInMemory() {
 
 // Loads the debug settings from a file
 void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorData) {
-  Serial.println(F("Loading debug settings..."));
+  Serial.println(F("Loading sensor data..."));
   File file = fs.open(path, FILE_READ);
   delay(10);
   DeserializationError error = deserializeJson(sensorDataDoc, file);
 
   if (error){
-    Serial.println(F("Failed to read file, using default debug settings."));
+    Serial.println(F("Failed to read file, using default sensor data."));
     Serial.println(error.c_str());
     saveSensorData(LittleFS, path, sensorData);
   }else{
@@ -1044,6 +1044,27 @@ void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, SelectedMap &selectedM
   }
 }
 
+void readMapsFromJSON(fs::FS &fs, const char * path){
+  Serial.println("Reading maps from mapData.json");
+  File file = fs.open(path, FILE_READ);
+  DeserializationError error = deserializeJson(mapListDoc, file);
+
+  if (error) {
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  for (JsonObject map : mapListDoc["maps"].as<JsonArray>()) {
+    int map_id = map["id"]; // 1, 2, 2
+    const char* map_name = map["name"];
+    const char* map_area = map["area"];
+    const char* map_country = map["country"];
+    const char* map_pngFile = map["pngFile"];
+    const char* map_kmlFile = map["kmlFile"];
+  }
+}
+
 String getGPSTimeMinsSecs(){
   hours = gps.time.hour() + config.timeZoneOffset;
   mins = gps.time.minute();
@@ -1269,7 +1290,7 @@ void webServerSetup(){
 
   webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
+      saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
       esp_restart();
     }
   );
@@ -1283,7 +1304,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = configDoc.as<JsonObject>();
                     putJSONConfigDataInMemory();
-                    saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
+                    saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
                     if(config.asAP){
                       delay(1000);
                       esp_restart();
@@ -1296,7 +1317,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = calDataDoc.as<JsonObject>();
                     putJSONCalibrationDataInMemory();
-                    saveCalibrationData(LittleFS, (jsonDir + filename_cal).c_str(), caldata);
+                    saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
@@ -1305,7 +1326,7 @@ void webServerSetup(){
                 {
                     JsonObject obj = debugSettingsDoc.as<JsonObject>();
                     putJSONDebugSettingsInMemory();
-                    saveDebugSettings(LittleFS, (jsonDir + filename_debug).c_str(), debugSettings);
+                    saveDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
@@ -1315,14 +1336,14 @@ void webServerSetup(){
                 {
                     JsonObject obj = mapListDoc.as<JsonObject>();
                     addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
-                    // saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
+                    // saveSelectedMap(LittleFS, (jsonDir + fileMapDataJSON).c_str(), selectedMap);
                     //mapSelector = mapSelector + 1;
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
             } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
             {
                 // /navigation/request-map"
-                if (DeserializationError::Ok == deserializeJson(selectedMap, (const char*)data))
+                if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
                 {
                     //JsonObject obj = mapListDoc.as<JsonObject>();
                     putJSONSelectedMapInMemory();
@@ -1357,7 +1378,7 @@ void webServerSetup(){
     }
   );
 
-    webServer.on("/listFiles", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/listFiles", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       listDir(LittleFS, mapsDir.c_str(), 0);
       request->send(200, "application/json", "{ \"status\": 0 }");
@@ -1401,38 +1422,44 @@ void webServerSetup(){
     {
       sensorData.homeBaseLat = gps.location.lat();
       sensorData.homeBaseLon = gps.location.lng();
-      saveSensorData(LittleFS, (jsonDir + filename_sensordata).c_str(), sensorData);
+      saveSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
       request->send(200, "application/json", "{ \"status\": 0 }");
     }
   );
 
-  webServer.on("/hapticap.json", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on(fileConfigJSON.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(LittleFS, "/json/hapticap.json", "application/json");
+      request->send(LittleFS, (jsonDir + fileConfigJSON).c_str(), "application/json");
     }
   );
 
-  webServer.on("/caldata.json", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on(fileCalDataJSON.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(LittleFS, "/json/caldata.json", "application/json");
+      request->send(LittleFS, (jsonDir + fileCalDataJSON).c_str(), "application/json");
     }
   );
 
-  webServer.on("/debug.json", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on(fileDebugJSON.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(LittleFS, "/json/debug.json", "application/json");
+      request->send(LittleFS, (jsonDir + fileDebugJSON).c_str(), "application/json");
     }
   );
 
-  webServer.on("/mapData.json", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on(fileMapDataJSON.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(LittleFS, "/json/mapData.json", "application/json");
+      request->send(LittleFS, (jsonDir + fileMapDataJSON).c_str(), "application/json");
     }
   );
 
-  webServer.on("/map1.jpg", HTTP_GET, [](AsyncWebServerRequest *request)
+  webServer.on("/maps/Home.png", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      request->send(LittleFS, "/map1.jpg", "image/jpeg");
+      request->send(LittleFS, "/maps/Home.png", "image/jpeg");
+    }
+  );
+
+  webServer.on("/maps/NoMap.png", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/maps/NoMap.png", "image/jpeg");
     }
   );
 
@@ -1514,6 +1541,7 @@ void PWMSetup(){
 }
 
 void wifiSetup(){
+      delay(500);
     // Connect to Wi-Fi network with SSID and password
   if (config.asAP) {
       delay(1000);
@@ -1542,8 +1570,9 @@ void wifiSetup(){
       Serial.print(".");
       intCounterWifi++;
         if (intCounterWifi > 120){
+          Serial.println("");
           config.asAP = 1;
-          saveConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
+          saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
           delay(1000);
           ESP.restart();          
         }
@@ -1560,6 +1589,7 @@ void wifiSetup(){
 }
 
 void magnometerSetup(){
+    Serial.println("");
     byte whoAmICode = 0x00;
   Wire.begin();
   if(!myMPU9250.init()){
@@ -1587,6 +1617,14 @@ void magnometerSetup(){
   myMPU9250.setMagOpMode(AK8963_CONT_MODE_100HZ);
 }
 
+void haptiCapReady(){
+  Serial.print("HaptiCap ready @ ");
+  Serial.println(getGPSTimeMinsSecs() + " " + getGPSDate());
+  Serial.print("Satellites: ");
+  Serial.println(sensorData.nrOfSatellites);
+  startup = true;
+}
+
 void setup(){
   // Serial port for debugging purposes
   Serial.begin(SerialUSBBaud);
@@ -1601,13 +1639,14 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   } else {
     Serial.println("LittleFS formatted successfully");
   }
-} else { // Initial mount success
+} else { 
+  getJSandCSSFiles(LittleFS, "/", 0);
 }
 
   Serial.println();
   delay(1000);
-  loadConfiguration(LittleFS, (jsonDir + filename).c_str(), config);
-  loadDebugSettings(LittleFS, (jsonDir + filename_debug).c_str(), debugSettings);  
+  loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+  loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);  
   
   Serial.println();
   Serial.print("HaptiCap version: ");
@@ -1626,16 +1665,11 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
 
   timerSetup();
   PWMSetup();
-
-  delay(500);
   wifiSetup();
- 
-  Serial.println("");
   magnometerSetup();
   
-  loadCalibrationData(LittleFS, (jsonDir + filename_cal).c_str(), caldata);
+  loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
-  loadSensorData(LittleFS, (jsonDir + filename_sensordata).c_str(), sensorData);
   getInitialReadings();
   timerAlarmEnable(timer0);
   //timerAlarmEnable(timer1);
@@ -1658,12 +1692,10 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
 
   webServerSetup();
   delay(1000);
-  Serial.print("HaptiCap ready @ ");
-  Serial.println(getGPSTimeMinsSecs() + " " + getGPSDate());
-  Serial.print("Satellites: ");
-  Serial.println(sensorData.nrOfSatellites);
-  saveMapInPosition(1, "Home", "kaag en Braassem", "Netherlands", "Home.png", "Home.kml");
-  startup = true;
+  loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
+  //saveMapInPosition(1, "Home", "kaag en Braassem", "Netherlands", "Home.png", "Home.kml");
+  readMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
+  haptiCapReady();
 }
  
 void loop(){
