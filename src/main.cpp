@@ -182,6 +182,7 @@ String uploadedPNGFile = "";
 String uploadedKMLFile = "";
 String selectedMapPNG = "";
 String selectedMapKML = "";
+String requestedMap = "";
 String currentMap = "";
 String previousMap = "";
 int mapSelector = 1;
@@ -983,13 +984,15 @@ String prepMapNameForMapDB(String fileName){
 }
 
 void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
+  int id = obj["id"];
   String name = obj["name"];
   String area = obj["area"];
   String country = obj["country"];
   PNGFile = mapsDir + "/" + PNGFile;
   KMLFile = mapsDir + "/" + KMLFile;
-  mapSelector = findFreeSpotForMap();
+  mapSelector = id;
   saveMapInPosition(mapSelector, name, area, country, PNGFile, KMLFile);
+  // save JSON DOC to file!!!
   Serial.println(name);
   Serial.println(area);
   Serial.println(country);
@@ -1485,6 +1488,12 @@ void webServerSetup(){
     {
       deleteFile(LittleFS, "/maps/BW12.png");
       request->send(200, "application/json", "{ \"status\": 0 }"); 
+    }
+  );
+
+  webServer.on(requestedMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, requestedMap.c_str(), "image/png");  
     }
   );
 
