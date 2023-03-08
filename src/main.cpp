@@ -61,7 +61,7 @@ struct Config {
   int touchThreshold = 50;
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = true;
-  bool ftpEnabled = false;
+  int selectedMap = 1;
 };
 
 // _CalData_
@@ -119,11 +119,11 @@ struct Waypoints {
 struct SelectedMap {
   // id, name, country, area, mapfile, kmlfile
   int map_id; // 1
-  char map_name[16]; // "Test area"
-  char map_area[16]; // "Kaag en Braassem"
-  char map_country[16]; // "Netherlands"
-  char map_pngFile[16]; // "kaagenbraassem.png"
-  char map_kmlFile[16]; // "kaagenbraassem.kml"
+  char map_name[16] = ""; // "Test area"
+  char map_area[16] = ""; // "Kaag en Braassem"
+  char map_country[16] = ""; // "Netherlands"
+  char map_pngFile[16] = ""; // "kaagenbraassem.png"
+  char map_kmlFile[16] = ""; // "kaagenbraassem.kml"
 };
 
 StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
@@ -504,6 +504,7 @@ void saveConfigDataToJSON(){
   configDoc["maxDistance"] = String(config.maxDistance);
   configDoc["maxDelay"] = String(config.maxDelay);
   configDoc["timeZoneOffset"] = String(config.timeZoneOffset);
+  configDoc["selectedMap"] = String(config.selectedMap);
 }
 
 // Saves the configuration to a file
@@ -545,7 +546,7 @@ void putJSONConfigDataInMemory(){
   config.maxDistance = configDoc["maxDistance"].as<int>();
   config.maxDelay = configDoc["maxDelay"].as<int>();
   config.timeZoneOffset = configDoc["timeZoneOffset"].as<int>();
-  config.ftpEnabled = configDoc["ftpEnabled"].as<bool>();
+  config.selectedMap = configDoc["selectedMap"].as<int>();
 }
 
 void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
@@ -772,7 +773,6 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
 // }
 
 // for (JsonObject map : doc["maps"].as<JsonArray>()) {
-
 //   int map_id = map["id"]; // 1, 2, 2
 //   const char* map_name = map["name"]; // "Test area", "Borderwar 12", "Borderwar 13"
 //   const char* map_area = map["area"]; // "Kaag en Braassem", "BW12", "BW13"
@@ -937,7 +937,6 @@ maps_8["kmlFile"] = mapsDir + kmlFile;
 }
 
 void saveMapInPosition(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile){
-
   switch(mapSelector){
     case 1:
       setMap1(name, area, country, PNGFile, KMLFile);
@@ -983,34 +982,21 @@ String prepMapNameForMapDB(String fileName){
     return response; 
 }
 
-void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
-  int id = obj["id"];
-  String name = obj["name"];
-  String area = obj["area"];
-  String country = obj["country"];
-  PNGFile = mapsDir + "/" + PNGFile;
-  KMLFile = mapsDir + "/" + KMLFile;
-  mapSelector = id;
-  saveMapInPosition(mapSelector, name, area, country, PNGFile, KMLFile);
-  // save JSON DOC to file!!!
-  Serial.println(name);
-  Serial.println(area);
-  Serial.println(country);
-  Serial.println(PNGFile);
-  Serial.println(KMLFile);
-};
-
+// Not used
 void removeMapFromDB(String filenName, int id){
     Serial.println("Removing map from DB.");
-    deleteFile(LittleFS, filenName.c_str());
 }
 
-// Map saving and loading
- void saveSelectedMapToJSON() {
-
+void putJSONSelectedMapInMemory(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile) {
+  selectedMap.map_id = mapSelector;
+  name.toCharArray(selectedMap.map_name, 16);
+  area.toCharArray(selectedMap.map_area, 16);
+  country.toCharArray(selectedMap.map_country, 16);
+  PNGFile.toCharArray(selectedMap.map_pngFile, 16);
+  KMLFile.toCharArray(selectedMap.map_kmlFile, 16);
 }
 
-void saveSelectedMap(fs::FS &fs, const char * path, const SelectedMap &selectedMap) {
+void saveMapList(fs::FS &fs, const char * path) {
   deleteFile(LittleFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
@@ -1018,7 +1004,6 @@ void saveSelectedMap(fs::FS &fs, const char * path, const SelectedMap &selectedM
     Serial.println(F("Failed to create file"));
     return;
   }
-  saveSelectedMapToJSON();
   if (serializeJson(mapListDoc, file) == 0) {
     Serial.println(F("Failed to write to file"));
   }else{
@@ -1027,27 +1012,22 @@ void saveSelectedMap(fs::FS &fs, const char * path, const SelectedMap &selectedM
   file.close();
 }
 
-void putJSONSelectedMapInMemory() {
-
-}
-
-void IRAM_ATTR loadMapList(fs::FS &fs, const char * path, SelectedMap &selectedMap) {
+void IRAM_ATTR loadMapList(fs::FS &fs, const char * path) {
   Serial.println(F("Loading debug settings..."));
   File file = fs.open(path, FILE_READ);
   delay(10);
   DeserializationError error = deserializeJson(mapListDoc, file);
-
   if (error){
     Serial.println(F("Failed to read file, using default debug settings."));
     Serial.println(error.c_str());
-    saveSelectedMap(LittleFS, path, selectedMap);
+    // saveMapList(LittleFS, path, doc);
   }else{
-  putJSONSelectedMapInMemory();
+  //putJSONSelectedMapInMemory();
   file.close();
   }
 }
 
-void readMapsFromJSON(fs::FS &fs, const char * path){
+void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
   Serial.println("Reading maps from mapData.json");
   File file = fs.open(path, FILE_READ);
   DeserializationError error = deserializeJson(mapListDoc, file);
@@ -1059,14 +1039,38 @@ void readMapsFromJSON(fs::FS &fs, const char * path){
   }
 
   for (JsonObject map : mapListDoc["maps"].as<JsonArray>()) {
-    int map_id = map["id"]; // 1, 2, 2
-    const char* map_name = map["name"];
-    const char* map_area = map["area"];
-    const char* map_country = map["country"];
-    const char* map_pngFile = map["pngFile"];
-    const char* map_kmlFile = map["kmlFile"];
+    int map_id = map["id"];
+    if(requestedMap == map_id){
+      const char* map_name = map["name"];
+      const char* map_area = map["area"];
+      const char* map_country = map["country"];
+      const char* map_pngFile = map["pngFile"];
+      const char* map_kmlFile = map["kmlFile"];
+    }
   }
 }
+
+void loadMap(int requestedMap){
+
+}
+
+void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
+  int id = obj["id"];
+  String name = obj["name"];
+  String area = obj["area"];
+  String country = obj["country"];
+  PNGFile = mapsDir + "/" + PNGFile;
+  KMLFile = mapsDir + "/" + KMLFile;
+  mapSelector = id;
+  saveMapInPosition(mapSelector, name, area, country, PNGFile, KMLFile);
+  putJSONSelectedMapInMemory(mapSelector, name, area, country, PNGFile, KMLFile);
+  saveMapList(LittleFS, (jsonDir + fileMapDataJSON).c_str());
+  Serial.println(name);
+  Serial.println(area);
+  Serial.println(country);
+  Serial.println(PNGFile);
+  Serial.println(KMLFile);
+};
 
 String getGPSTimeMinsSecs(){
   hours = gps.time.hour() + config.timeZoneOffset;
@@ -1291,6 +1295,62 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/navigation/map-list", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+
+  webServer.on("/navigation/select-map", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+
+  webServer.on("/navigation/waypoints", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+
+  webServer.on("/system/system-info", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+
+  webServer.on("/system/settingsform", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+
+  webServer.on("/system/calibrationform", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+
+  webServer.on("/system/debugform", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/index.html", String(), false, processor);
+      timerRestart(timer2);
+    }
+  );
+  //
+
+  webServer.on("/redirect.html", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/redirect.html", String(), false, processor);
+    }
+  );
+
   webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
@@ -1349,7 +1409,7 @@ void webServerSetup(){
                 if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
                 {
                     //JsonObject obj = mapListDoc.as<JsonObject>();
-                    putJSONSelectedMapInMemory();
+                    //putJSONSelectedMapInMemory();
                     //saveSelectedMap(LittleFS, (jsonDir + filename_mapData).c_str(), selectedMap);
                 }
                 request->send(200, "application/json", "{ \"status\": 0 }");
@@ -1511,8 +1571,8 @@ void webServerSetup(){
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
     {
-    request->send(LittleFS, "/redirect.html", String(), false, processor);
-    timerRestart(timer2);
+    request->send(LittleFS, "/redirect.html", "text/html");
+    //timerRestart(timer2);
     Serial.println("redirect called");
   });
   
@@ -1703,7 +1763,8 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   delay(1000);
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   //saveMapInPosition(1, "Home", "kaag en Braassem", "Netherlands", "Home.png", "Home.kml");
-  readMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
+  //readMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapListDoc);
+  loadMap(config.selectedMap);
   haptiCapReady();
 }
  
