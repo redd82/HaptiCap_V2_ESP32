@@ -857,7 +857,7 @@ int findFreeSpotForMap(){
 }
 
 void setMap1(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_1 = maps.createNestedObject();
+//JsonObject maps_1 = maps.createNestedObject();
 maps_1["id"] = 1;
 maps_1["name"] = name;
 maps_1["area"] = area;
@@ -867,7 +867,7 @@ maps_1["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap2(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_2 = maps.createNestedObject();
+//JsonObject maps_2 = maps.createNestedObject();
 maps_2["id"] = 2;
 maps_2["name"] = name;
 maps_2["area"] = area;
@@ -877,7 +877,7 @@ maps_2["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap3(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_3 = maps.createNestedObject();
+//JsonObject maps_3 = maps.createNestedObject();
 maps_3["id"] = 3;
 maps_3["name"] = name;
 maps_3["area"] = area;
@@ -887,7 +887,7 @@ maps_3["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap4(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_4 = maps.createNestedObject();
+// maps_4 = maps.createNestedObject();
 maps_4["id"] = 4;
 maps_4["name"] = name;
 maps_4["area"] = area;
@@ -897,7 +897,7 @@ maps_4["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap5(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_5 = maps.createNestedObject();
+//JsonObject maps_5 = maps.createNestedObject();
 maps_5["id"] = 5;
 maps_5["name"] = name;
 maps_5["area"] = area;
@@ -907,7 +907,7 @@ maps_5["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap6(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_6 = maps.createNestedObject();
+//JsonObject maps_6 = maps.createNestedObject();
 maps_6["id"] = 6;
 maps_6["name"] = name;
 maps_6["area"] = area;
@@ -917,7 +917,7 @@ maps_6["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap7(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_7 = maps.createNestedObject();
+//JsonObject maps_7 = maps.createNestedObject();
 maps_7["id"] = 7;
 maps_7["name"] = name;
 maps_7["area"] = area;
@@ -927,7 +927,7 @@ maps_7["kmlFile"] = mapsDir + kmlFile;
 }
 
 void setMap8(String name, String area, String country, String pngFile, String kmlFile){
-JsonObject maps_8 = maps.createNestedObject();
+//JsonObject maps_8 = maps.createNestedObject();
 maps_8["id"] = 8;
 maps_8["name"] = name;
 maps_8["area"] = area;
@@ -1013,7 +1013,7 @@ void saveMapList(fs::FS &fs, const char * path) {
 }
 
 void IRAM_ATTR loadMapList(fs::FS &fs, const char * path) {
-  Serial.println(F("Loading debug settings..."));
+  Serial.println(F("Loading maps..."));
   File file = fs.open(path, FILE_READ);
   delay(10);
   DeserializationError error = deserializeJson(mapListDoc, file);
@@ -1022,6 +1022,8 @@ void IRAM_ATTR loadMapList(fs::FS &fs, const char * path) {
     Serial.println(error.c_str());
     // saveMapList(LittleFS, path, doc);
   }else{
+  serializeJson(mapListDoc, Serial);
+  Serial.println("");
   //putJSONSelectedMapInMemory();
   file.close();
   }
@@ -1064,7 +1066,11 @@ void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
   mapSelector = id;
   saveMapInPosition(mapSelector, name, area, country, PNGFile, KMLFile);
   putJSONSelectedMapInMemory(mapSelector, name, area, country, PNGFile, KMLFile);
-  saveMapList(LittleFS, (jsonDir + fileMapDataJSON).c_str());
+  Serial.println("");
+  serializeJson(mapListDoc, Serial);
+  Serial.println("");
+  //saveMapList(LittleFS, (jsonDir + fileMapDataJSON).c_str());
+  Serial.println(id);
   Serial.println(name);
   Serial.println(area);
   Serial.println(country);
@@ -1762,6 +1768,7 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   webServerSetup();
   delay(1000);
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
+  loadMapList(LittleFS, (jsonDir + fileMapDataJSON).c_str());
   //saveMapInPosition(1, "Home", "kaag en Braassem", "Netherlands", "Home.png", "Home.kml");
   //readMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapListDoc);
   loadMap(config.selectedMap);
