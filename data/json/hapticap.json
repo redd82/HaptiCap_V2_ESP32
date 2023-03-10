@@ -15,5 +15,6 @@
     "touchEnabled": true,
     "maxDistance": "500",
     "maxDelay": "1000",
-    "timeZoneOffset": "1"
+    "timeZoneOffset": "1",
+    "selectedMap" : 1
 }
