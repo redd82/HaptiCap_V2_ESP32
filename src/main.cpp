@@ -133,14 +133,6 @@ StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
 StaticJsonDocument <MAPLIST_JSON_DOCSIZE> mapListDoc;
 StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> selectedMapJSON;
 JsonArray maps = mapListDoc.createNestedArray("maps");
-JsonObject maps_1 = maps.createNestedObject();
-JsonObject maps_2 = maps.createNestedObject();
-JsonObject maps_3 = maps.createNestedObject();
-JsonObject maps_4 = maps.createNestedObject();
-JsonObject maps_5 = maps.createNestedObject();
-JsonObject maps_6 = maps.createNestedObject();
-JsonObject maps_7 = maps.createNestedObject();
-JsonObject maps_8 = maps.createNestedObject();
 
 Config config;                         // <- global configuration object
 CalData caldata;
@@ -167,18 +159,11 @@ String appDir = "/app";
 String jsonDir = "/json";
 String uploadedPNGFile = "";
 String uploadedKMLFile = "";
-String selectedMapPNG = "";
-String selectedMapKML = "";
 String requestedMap = "";
-String currentMap = "";
-String previousMap = "";
 int mapSelector = 1;
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
-char compassCardinal[8];
-char waypointCardinal[8];
-char cardinal2home[8];
 
 // _Interrupts_
 volatile int interrupt0;
@@ -226,7 +211,6 @@ int i = 0;
 
 RTC_DATA_ATTR double flCurrentLat;
 RTC_DATA_ATTR double flCurrentLon;
-RTC_DATA_ATTR bool bDumpConfig = 1;
 RTC_DATA_ATTR bool bTargetReachedAck = 0;
 RTC_DATA_ATTR bool bHomeReachedAck = 0;
 
@@ -273,6 +257,7 @@ bool bDebugTgrtReached = 0;
 bool bDebugHomeReached = 0;
 int GPSFix = 0;
 bool GPSFixAccepted = 0;
+bool asAP = false;
 bool startup = false;
 
 // ISR's
@@ -327,6 +312,7 @@ void callbackT3(){
   
 }
 
+// file management
 String humanReadableSize(const size_t bytes) {
     if (bytes < 1024) return String(bytes) + " B";
     else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
@@ -517,7 +503,7 @@ void saveConfigDataToJSON(){
 }
 
 // Saves the configuration to a file
-void saveConfiguration(fs::FS &fs, const char * path, const Config &config) {
+void saveConfiguration(fs::FS &fs, const char * path) {
   deleteFile(LittleFS, path);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
@@ -567,7 +553,7 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
   if (error){
     Serial.println(F("Failed to read file, using default configuration"));
     Serial.println(error.c_str());
-    saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+    saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
   }else{
   putJSONConfigDataInMemory();
   file.close();
@@ -793,6 +779,7 @@ void removeMapFromDB(String filenName, int id){
     Serial.println("Removing map from DB.");
 }
 
+// map management
 void putJSONSelectedMapInMemory(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile) {
   selectedMap.map_id = mapSelector;
   name.toCharArray(selectedMap.map_name, 16);
@@ -904,6 +891,7 @@ void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
   writeMapToJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapSelector, name, area, country, PNGFile, KMLFile);
 };
 
+// GPS functions
 String getGPSTimeMinsSecs(){
   hours = gps.time.hour() + config.timeZoneOffset;
   mins = gps.time.minute();
@@ -1021,6 +1009,40 @@ float CalcRelHeading(float compforheading,float coarseforWaypoint){
   return relativeHeading;
 }
 
+void checkGPSFix(){
+  if(GPSFix > 1){
+    int pwm_up = 0;
+    if(!GPSFixAccepted){
+      while (pwm_up < 255){
+        ledcWrite(pwmhapticright, pwm_up); 
+        ledcWrite(pwmhapticfront, pwm_up);
+        ledcWrite(pwmhapticrear, pwm_up);
+        ledcWrite(pwmhapticleft, pwm_up);
+      delay(10);
+      pwm_up++;
+      }
+        ledcWrite(pwmhapticright, 0); 
+        ledcWrite(pwmhapticfront, 0);
+        ledcWrite(pwmhapticrear, 0);
+        ledcWrite(pwmhapticleft, 0);
+    }
+  }else{
+    ledcWrite(pwmhapticleft, 0);
+    ledcWrite(pwmhapticright, 255);
+    delay(200);
+    ledcWrite(pwmhapticright, 0); 
+    ledcWrite(pwmhapticfront, 255);
+    delay(200);
+    ledcWrite(pwmhapticfront, 0);
+    ledcWrite(pwmhapticrear, 255);
+    delay(200);
+    ledcWrite(pwmhapticrear, 0);
+    ledcWrite(pwmhapticleft, 255);
+    delay(200);
+    GPSFixAccepted = 0;     
+  }
+}
+
 void updateSensorData(){
   if (millis() > 5000 && gps.charsProcessed() < 10){
       Serial.println(F("No GPS data received: check wiring"));
@@ -1029,7 +1051,9 @@ void updateSensorData(){
     String temp;
     sensorData.gpsTime = gps.time.value();
     sensorData.ownLat = gps.location.lat();
+    flCurrentLat = gps.location.lat();
     sensorData.ownLon = gps.location.lng();
+    flCurrentLon = gps.location.lng();
     sensorData.compassHeading = GetCompassHeading();
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
@@ -1046,6 +1070,7 @@ void updateSensorData(){
     sensorData.nrOfSatellites = gps.satellites.value();
     getGPSTimeMins();
     saveSensorDataToJSON();
+    checkGPSFix();
   }
 
   if (nrsatt > 3){
@@ -1063,7 +1088,9 @@ void getInitialReadings(){
   smartDelay(50);
   String temp;
   sensorData.ownLat = gps.location.lat();
+  flCurrentLat = gps.location.lat();
   sensorData.ownLon = gps.location.lng();
+  flCurrentLon = gps.location.lng();
   sensorData.compassHeading = GetCompassHeading();
   temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
   temp.toCharArray(sensorData.compassCardinal,8);
@@ -1083,7 +1110,179 @@ void getInitialReadings(){
   saveSensorDataToJSON();
 }
 
-// Replaces placeholder with value
+void HapticFeedbackHeading(float relativeHeading,bool bEnable,bool debug,int distancePOI){
+float front;
+float right;
+float rear;
+float left;
+int mindelay = 150;
+float DelayCoefficient = (config.maxDelay - mindelay) /(config.maxDistance - config.targetReached);
+float DelayOffset = mindelay - (DelayCoefficient * config.targetReached);
+int distancepulse;                                                                            
+bool bTargetReached = 0;
+int haptic_counter = 0;
+int haptic_bursts = 2;
+
+distancepulse = distancePOI * DelayCoefficient + DelayOffset;
+
+if(distancepulse < mindelay){
+  distancepulse = mindelay;
+}
+
+if(distancepulse > 1000){
+  distancepulse = 1000;
+}
+  
+if (distancePOI < config.targetReached){
+  bTargetReached = true;
+}else{
+  bTargetReached = false;
+}
+    
+if (bEnable){
+  if((315.0 <= relativeHeading && relativeHeading <= 359.99) || (0.0 <= relativeHeading && relativeHeading <= 44.99)){
+  // front haptic on
+  // 0 as midpoint ok
+    if(0.0 <= relativeHeading && relativeHeading <= 44){
+      front = 255.0 - (relativeHeading * b);
+      right = 255.0 - ((90.0 - relativeHeading) * b);
+      pwm_front = (int)front;
+      pwm_right = (int)right;
+      pwm_rear = 0;
+      pwm_left = 0;
+    }else if (315.0 <= relativeHeading && relativeHeading <= 359.99){
+      front = 255.0 - ((360.0 - relativeHeading) * b);
+      left = 255.0 - ((relativeHeading - 270.0) * b);
+      pwm_front = (int)front;
+      pwm_left = (int)left;
+      pwm_rear = 0;
+      pwm_right = 0; 
+    }
+  }
+  else if(45.0 <= relativeHeading && relativeHeading <= 134.99){
+  // right haptic on
+  // 90 as midpoint ok
+      if(relativeHeading <= 89.99){
+        right = 255.0 - ((90.0 - relativeHeading) * b);
+        front = 255.0 - (relativeHeading * b);
+        pwm_right = (int)right;
+        pwm_front = (int)front;
+        pwm_rear = 0;
+        pwm_left = 0;
+      }
+      else if(relativeHeading >= 90.0){
+        right = 255.0 - ((relativeHeading - 90.0) * b);
+        rear = 255.0 - ((180.0 - relativeHeading) * b);
+        pwm_right = (int)right;
+        pwm_rear = (int)rear;
+        pwm_front = 0;
+        pwm_left = 0;
+      }
+  }
+  else if(135.0 <= relativeHeading && relativeHeading <= 224.99 ){
+  // rear haptic on
+  // 180 as midpoint ok
+      if(relativeHeading <= 179.99){
+        rear = 255.0 - ((180.0 - relativeHeading) * b);
+        right = 255.0 - ((relativeHeading - 90.0) * b);          
+        pwm_rear = (int)rear;
+        pwm_right = (int)right;
+        pwm_front = 0;
+        pwm_left = 0;
+      }
+      else if(relativeHeading >= 180.0){
+        rear = 255.0 - ((relativeHeading - 180.0) * b);
+        left = 255.0 - ((270.0 - relativeHeading) * b);
+        pwm_rear = (int)rear;
+        pwm_left = (int)left;
+        pwm_front = 0;
+        pwm_left = 0;
+      }    
+  }
+  else if(225.0 <= relativeHeading && relativeHeading <= 314.99 ){
+  // left haptic on
+  //270 as midpoint ok
+      if(relativeHeading <= 269.99){
+        left = 255.0 - ((270.0 - relativeHeading) * b);
+        rear = 255.0 - ((relativeHeading - 180) * b);
+        pwm_left = (int)left;
+        pwm_rear = (int)rear;
+        pwm_front = 0;
+        pwm_right = 0;
+      }
+      else if(relativeHeading >= 270.0){
+        left = 255.0 - ((relativeHeading - 270.0) * b);
+        front = 255.0 - ((360.0 - relativeHeading) * b);
+        pwm_left = (int)left;
+        pwm_front = (int)front;
+        pwm_rear = 0;
+        pwm_right = 0;
+      }
+    }
+  }else if (debug){
+      pwm_left = 255;
+      pwm_front = 255;
+      pwm_rear = 255;
+      pwm_right = 255;
+  }
+  else {
+      pwm_left = 0;
+      pwm_front = 0;
+      pwm_rear = 0;
+      pwm_right = 0;
+  }
+
+  if (bTargetReached){
+    while (haptic_counter < haptic_bursts){
+      ledcWrite(pwmhapticright, 255); 
+      ledcWrite(pwmhapticfront, 255);
+      ledcWrite(pwmhapticrear, 255);
+      ledcWrite(pwmhapticleft, 255);
+      delay(75);
+      ledcWrite(pwmhapticright, 0); 
+      ledcWrite(pwmhapticfront, 0);
+      ledcWrite(pwmhapticrear, 0);
+      ledcWrite(pwmhapticleft, 0);
+      delay(75);
+      haptic_counter++;
+    }
+  }else{
+    if( distancePOI < config.maxDistance){
+      while (haptic_counter < haptic_bursts){
+          ledcWrite(pwmhapticright, pwm_right); 
+          ledcWrite(pwmhapticfront, pwm_front);
+          ledcWrite(pwmhapticrear, pwm_rear);
+          ledcWrite(pwmhapticleft, pwm_left);
+        delay(distancepulse);
+          ledcWrite(pwmhapticright, 0); 
+          ledcWrite(pwmhapticfront, 0);
+          ledcWrite(pwmhapticrear, 0);
+          ledcWrite(pwmhapticleft, 0);
+        delay(distancepulse);
+        haptic_counter++;
+      }  
+    }else{
+      ledcWrite(pwmhapticright, pwm_right); 
+      ledcWrite(pwmhapticfront, pwm_front);
+      ledcWrite(pwmhapticrear, pwm_rear);
+      ledcWrite(pwmhapticleft, pwm_left);                
+    }
+  }
+  //delay(500);   
+  if (debugSettings.debug2Serial){
+      Serial.print("relativeHeading: ");
+      Serial.println(relativeHeading);
+      Serial.print("distancePOI: ");
+      Serial.println(distancePOI);
+      Serial.print("Target reached: ");
+      Serial.println(bTargetReached);
+      Serial.print("Target reached ack: ");
+      Serial.println(bTargetReachedAck);
+      delay(100);                
+  }
+}
+
+// Replaces placeholder with value for webserver
 String processor(const String& var){
   if(var == "JSFILE"){
         str2HTML = fileJs;
@@ -1122,6 +1321,27 @@ void addWebServerHeaders(){
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, PUT");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+// class CaptiveRequestHandler : public AsyncWebHandler {
+// public:
+//   CaptiveRequestHandler() {}
+//   virtual ~CaptiveRequestHandler() {}
+
+//   bool canHandle(AsyncWebServerRequest *request){
+//     //request->addInterestingHeader("ANY");
+//     return true;
+//   }
+
+//   void handleRequest(AsyncWebServerRequest *request) {
+//     request->send(LittleFS, "/index.html", String(), false, processor);
+//   }
+// };
+
+void webServerHandlers(){
+  // if(asAP){
+  //   webServer.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
+  // }
 }
 
 void webServerSetup(){
@@ -1195,7 +1415,7 @@ void webServerSetup(){
 
   webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+      saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
       esp_restart();
     }
   );
@@ -1208,11 +1428,7 @@ void webServerSetup(){
           {
               JsonObject obj = configDoc.as<JsonObject>();
               putJSONConfigDataInMemory();
-              saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
-              if(config.asAP){
-                delay(1000);
-                esp_restart();
-              }
+              saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
           }
           request->send(200, "application/json", "{ \"status\": 0 }");
       } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
@@ -1384,18 +1600,6 @@ void webServerSetup(){
     }
   );
 
-  webServer.on("/maps/Home.png", HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-      request->send(LittleFS, "/maps/Home.png", "image/jpeg");
-    }
-  );
-
-  webServer.on("/maps/NoMap.png", HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-      request->send(LittleFS, "/maps/NoMap.png", "image/jpeg");
-    }
-  );
-
   webServer.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(LittleFS, "/manifest.json", "application/json");  
@@ -1421,17 +1625,15 @@ void webServerSetup(){
     }
   );
 
-  webServer.on(requestedMap.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-      request->send(LittleFS, requestedMap.c_str(), "image/png");  
-    }
-  );
-
   webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest * request) {
     request->send(200);
   }, handleUpload);
 
   webServer.onFileUpload(handleUpload);
+
+  // webServer.onNotFound([](AsyncWebServerRequest * request) {
+  //   request->send( 200, "text/html", "URI Not Found" );
+  // });
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
     {
@@ -1444,11 +1646,14 @@ void webServerSetup(){
       Serial.println("redirect called");
     }
   });
+
   
   addWebServerHeaders();
+  webServerHandlers();
   webServer.begin();
   Serial.print("HTTP Started on port: ");
   Serial.println(config.http_port);
+  delay(1000);
 }
 
 void timerSetup(){
@@ -1464,6 +1669,14 @@ void timerSetup(){
   timer2 = timerBegin(2, 80, true);
   timerAttachInterrupt(timer2, &onTimer2, true);
   timerAlarmWrite(timer2, (config.sleepMins * 60000000), true);            // 1 min
+
+  timerAlarmEnable(timer0);
+  timerAlarmEnable(timer1);
+  //timerAlarmEnable(timer2);
+
+  timerStart(timer0);
+  timerStart(timer1);
+  //timerStart(timer2);  
 }
 
 void PWMSetup(){
@@ -1480,58 +1693,55 @@ void PWMSetup(){
 }
 
 void wifiSetup(){
-      delay(500);
-  if (config.asAP) {
-      delay(1000);
-      WiFi.mode( WIFI_MODE_APSTA );
-      IPAddress ip( 192, 168, 1, 1 );
-      IPAddress gateway( 192, 168, 1, 1 );
-      IPAddress subnet( 255, 255, 255, 0 );
-      WiFi.softAP(config.deviceName,config.apPasswd);
-      delay(2000);
-      WiFi.softAPConfig( ip, gateway, subnet );
-      Serial.print("Setting HaptiCap up as AP: ");
-      Serial.println(config.deviceName);
-      Serial.println(config.apPasswd);      
-      IPAddress IP = WiFi.softAPIP();
-      Serial.print("AP IP address: ");
-      Serial.println(IP);
-      ipAddress = IP.toString();
-  }else{
-      Serial.print("Setting HapiCap as client to network ");
-      Serial.print(config.clientSSID);
-      WiFi.mode(WIFI_STA);
-      WiFi.begin(config.clientSSID, config.clientPasswd);
-      intCounterWifi = 0;
-      
-    while (WiFi.status() != WL_CONNECTED){
-      delay(500);
-      Serial.print(".");
-      intCounterWifi++;
-        if (intCounterWifi > 120){
-          Serial.println("");
-          config.asAP = 1;
-          saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
-          delay(1000);
-          ESP.restart();          
-        }
-      }
+delay(500);
 
-  // initialize WiFi
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(config.clientSSID);
-    IPAddress IP = WiFi.localIP();
-    ipAddress = IP.toString();
+if (asAP) {
+  delay(1000);
+  WiFi.mode( WIFI_MODE_APSTA );
+  IPAddress ip( 192, 168, 1, 1 );
+  IPAddress gateway( 192, 168, 1, 1 );
+  IPAddress subnet( 255, 255, 255, 0 );
+  WiFi.softAP(config.deviceName,config.apPasswd);
+  delay(2000);
+  WiFi.softAPConfig( ip, gateway, subnet );
+  Serial.print("Setting HaptiCap up as AP: ");
+  Serial.println(config.deviceName);
+  Serial.println(config.apPasswd);      
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  ipAddress = IP.toString();
+}else{
+  Serial.print("Setting HapiCap as client to network ");
+  Serial.print(config.clientSSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(config.clientSSID, config.clientPasswd);
+  intCounterWifi = 0;
+    
+  while (WiFi.status() != WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+    intCounterWifi++;
+      if (intCounterWifi > 120){
+        Serial.println("");
+        asAP = 1;
+        saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
+        delay(1000);
+        ESP.restart();          
+      }
+    }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(config.clientSSID);
+  IPAddress IP = WiFi.localIP();
+  ipAddress = IP.toString();
   }
-  hostAddress = "http://" + ipAddress;
-  Serial.println("HostAddress:");
-  Serial.println(hostAddress);
+hostAddress = "http://" + ipAddress;
 }
 
 void magnometerSetup(){
-    Serial.println("");
-    byte whoAmICode = 0x00;
+  Serial.println("");
+  byte whoAmICode = 0x00;
   Wire.begin();
   if(!myMPU9250.init()){
     Serial.println("MPU9250 does not respond");
@@ -1558,6 +1768,41 @@ void magnometerSetup(){
   myMPU9250.setMagOpMode(AK8963_CONT_MODE_100HZ);
 }
 
+void ioSetup(){
+// Initialize outputs
+  pinMode(buttonPin,INPUT);
+  pinMode(led, OUTPUT);
+  pinMode(dta_rdy_pin,INPUT);
+
+  //PWM setup
+  ledcSetup(pwmhapticfront, hapticfreq, resolution);
+  ledcSetup(pwmhapticright, hapticfreq, resolution);
+  ledcSetup(pwmhapticrear, hapticfreq, resolution);
+  ledcSetup(pwmhapticleft, hapticfreq, resolution);
+  ledcAttachPin(hapticfront, pwmhapticfront);
+  ledcAttachPin(hapticright, pwmhapticright);
+  ledcAttachPin(hapticrear, pwmhapticrear);
+  ledcAttachPin(hapticleft, pwmhapticleft);
+  digitalWrite(led, 0);
+}
+
+void littleFSSetup(){
+  // Initialize LittleFS
+    delay(1000);
+  if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+    Serial.println("Failed to mount LittleFS");
+    if (!LittleFS.begin(true /* true: format */)) {
+      Serial.println("Failed to format LittleFS");
+    } else {
+      Serial.println("LittleFS formatted successfully");
+    }
+  } else { 
+    getJSandCSSFiles(LittleFS, "/", 0);
+  }
+    Serial.println();
+    delay(1000);
+}
+
 void haptiCapReady(){
   Serial.print("HaptiCap ready @ ");
   //printCPUSpeed();
@@ -1569,27 +1814,20 @@ void haptiCapReady(){
   startup = true;
 }
 
-void setup(){
-  // Serial port for debugging purposes
-  Serial.begin(SerialUSBBaud);
-  Serial2.begin(GPSBaud);
-  delay(1000);
-
-// Initialize LittleFS
-if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
-  Serial.println("Failed to mount LittleFS");
-  if (!LittleFS.begin(true /* true: format */)) {
-    Serial.println("Failed to format LittleFS");
-  } else {
-    Serial.println("LittleFS formatted successfully");
-  }
-} else { 
-  getJSandCSSFiles(LittleFS, "/", 0);
+void touchPadSetup(){
+//Setup interrupt on Touch Pad 1 (GPIO0) and wake up
+  touchAttachInterrupt(T0, callbackT0, config.touchThreshold);
+  touchAttachInterrupt(T3, callbackT3, config.touchThreshold);
+  esp_sleep_enable_touchpad_wakeup();
 }
 
-  Serial.println();
-  delay(1000);
+void setup(){
+  Serial.begin(SerialUSBBaud);
+  Serial2.begin(GPSBaud);
+
+  littleFSSetup();
   loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+  asAP = config.asAP;
   loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);  
   
   Serial.println();
@@ -1597,16 +1835,8 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   Serial.println(SWVERSION);
   Serial.println("By Chrysnet.com and Triznet.com");
 
-//Setup interrupt on Touch Pad 1 (GPIO0) and wake up
-  touchAttachInterrupt(T0, callbackT0, config.touchThreshold);
-  touchAttachInterrupt(T3, callbackT3, config.touchThreshold);
-  esp_sleep_enable_touchpad_wakeup();
-  
-// Initialize outputs
-  pinMode(buttonPin,INPUT);
-  pinMode(led, OUTPUT);
-  pinMode(dta_rdy_pin,INPUT);
-
+  touchPadSetup();
+  ioSetup();
   timerSetup();
   PWMSetup();
   wifiSetup();
@@ -1615,35 +1845,32 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
   getInitialReadings();
-  timerAlarmEnable(timer0);
-  //timerAlarmEnable(timer1);
-  //timerAlarmEnable(timer2);
 
-  timerStart(timer0);
-  //timerStart(timer1);
-  //timerStart(timer2);  
-
-  if(!config.asAP){
+  if(!asAP){
     Serial.print("IP address: ");
     Serial.println(ipAddress);
     Serial.print("Host address: ");
     Serial.println(hostAddress);
     }else{
+      dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
       dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
       Serial.print("DNS Started on port.");
       Serial.println(config.dns_port);
+      Serial.print("IP address: ");
+      Serial.println(ipAddress);
+      Serial.print("Host address: ");
+      Serial.println(hostAddress);
     }
 
   webServerSetup();
-  delay(1000);
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
-  loadMap(config.selectedMap);
+  // loadMap(config.selectedMap);
   haptiCapReady();
 }
- 
+
 void loop(){
-  if(config.asAP){  
+  if(asAP){  
     dnsServer.processNextRequest();
   }
 
