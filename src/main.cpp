@@ -327,34 +327,67 @@ void callbackT3(){
   
 }
 
-void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
-    Serial.printf("Listing directory: %s\r\n", dirname);
+String humanReadableSize(const size_t bytes) {
+    if (bytes < 1024) return String(bytes) + " B";
+    else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
+    else if (bytes < (1024 * 1024 * 1024)) return String(bytes / 1024.0 / 1024.0) + " MB";
+    else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
+}
 
+String printFreeSpace(){
+  String freeSpace = "";
+  Serial.print("Free: "); Serial.println(humanReadableSize((LittleFS.totalBytes() - LittleFS.usedBytes())));
+  freeSpace = "Free: " + humanReadableSize((LittleFS.totalBytes() - LittleFS.usedBytes()));
+  Serial.print("Used: "); Serial.println(humanReadableSize(LittleFS.usedBytes()));
+  freeSpace = freeSpace + "\n" + "Used: " + humanReadableSize(LittleFS.usedBytes());
+  Serial.print("Total: "); Serial.println(humanReadableSize(LittleFS.totalBytes()));
+  freeSpace = freeSpace + "\n" + "Total: " + humanReadableSize(LittleFS.totalBytes());
+  return freeSpace;
+}
+
+String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    String filesListing = "";
+    String dirName = dirName.c_str();
+    //Serial.printf("Listing directory: %s\r\n", dirname);
+    filesListing = "Listing directory: " + dirName;
     File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
-        return;
+        return "- failed to open directory";
     }
     if(!root.isDirectory()){
         Serial.println(" - not a directory");
-        return;
+        return "- failed to open directory";
     }
 
     File file = root.openNextFile();
     while(file){
         if(file.isDirectory()){
-            Serial.print("  DIR : ");
-            Serial.println(file.name());
+            //Serial.print("  DIR : ");
+            filesListing = filesListing + "\n" + "  DIR : ";
+            //Serial.println(file.name());
+            filesListing = filesListing + "\n" + file.name();
             if(levels){
                 listDir(fs, file.path(), levels -1);
             }
         } else {
-            Serial.print("  FILE: ");
-            Serial.print(file.name());
-            Serial.print("\tSIZE: ");
-            Serial.println(file.size());
+            //Serial.print("  FILE: ");
+            //Serial.print(file.name());
+            filesListing = filesListing + "\n" + "  FILE: " + file.name();
+            //Serial.print("\tSIZE: ");
+            //Serial.println(file.size());
+            filesListing = filesListing + "\t SIZE: " + file.size();
         }
         file = root.openNextFile();
+    }
+    Serial.println("Listing:");
+    Serial.println(filesListing.c_str());
+
+    if(levels == 0){
+      return filesListing;
+      //return (filesListing + "\n" + printFreeSpace());
+    }else{
+      return filesListing;
     }
 }
 
@@ -386,16 +419,12 @@ void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels){
               if(!cssJsFileNamesConcat){
                 if(fileName.endsWith(".js")){
                   fileJs.concat(file.name());
-                  //Serial.println(fileJs);
                 } else if (fileName.endsWith(".js.map")){
                   fileJsMap.concat(file.name());
-                  //Serial.println(fileJsMap);
                 } else if (fileName.endsWith(".css")){
                   fileCss.concat(file.name());
-                  //Serial.println(fileCss);
                 } else if (fileName.endsWith(".css.map")){
                   fileCssMap.concat(file.name());
-                  //Serial.println(fileCssMap);
                 }
               }
               Serial.print(file.name());
@@ -464,19 +493,6 @@ void deleteFile(fs::FS &fs, const char * path){
     } else {
         Serial.println("Delete failed");
     }
-}
-
-String humanReadableSize(const size_t bytes) {
-    if (bytes < 1024) return String(bytes) + " B";
-    else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
-    else if (bytes < (1024 * 1024 * 1024)) return String(bytes / 1024.0 / 1024.0) + " MB";
-    else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
-}
-
-void printFreeSpace(){
-  Serial.print("Free: "); Serial.println(humanReadableSize((LittleFS.totalBytes() - LittleFS.usedBytes())));
-  Serial.print("Used: "); Serial.println(humanReadableSize(LittleFS.usedBytes()));
-  Serial.print("Total: "); Serial.println(humanReadableSize(LittleFS.totalBytes()));
 }
 
 void saveConfigDataToJSON(){
@@ -787,11 +803,6 @@ void putJSONSelectedMapInMemory(int mapSelector, String name, String area, Strin
 }
 
 void saveMapList(fs::FS &fs, const char * path) {
-  Serial.println("");
-  Serial.println("mapListDoc:");
-  serializeJson(mapListDoc, Serial);
-  Serial.println("");
-
   deleteFile(LittleFS, path);
   Serial.println(path);
   File file = fs.open(path, FILE_WRITE);
@@ -811,6 +822,7 @@ void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name
   Serial.println("Writing map from recieved data.");
   File file = fs.open(path, FILE_READ);
   DeserializationError error = deserializeJson(mapListDoc, file);
+  file.close(); 
 
   if (error) {
     Serial.print("deserializeJson() failed: ");
@@ -873,7 +885,7 @@ void IRAM_ATTR readAllMapsFromJSON(fs::FS &fs, const char * path){
     const char* map_pngFile = map["pngFile"];
     const char* map_kmlFile = map["kmlFile"];
   }
-  listDir(LittleFS, "/maps", 0);
+  //listDir(LittleFS, "/maps", 0);
 }
 
 void loadMap(int requestedMap){
@@ -1112,22 +1124,6 @@ void addWebServerHeaders(){
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-void addWebServerPNGFileEndpoint(){
-  webServer.on(selectedMap.map_pngFile, HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-      request->send(LittleFS, selectedMap.map_pngFile, "image/jpeg");
-    }
-  );
-}
-
-void addWebServerKMLFileEndpoint(){
-  webServer.on(selectedMap.map_kmlFile, HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-      request->send(LittleFS, selectedMap.map_kmlFile, "application/vnd.google-earth.kml+xml");
-    }
-  );
-}
-
 void webServerSetup(){
 // Webserver setup responses
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -1136,6 +1132,11 @@ void webServerSetup(){
       timerRestart(timer2);
     }
   );
+
+  webServer.on("^\\/maps\\/([a-zA-Z0-9_]+.[A-Za-z]{3})$", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String mapFile = request->pathArg(0);
+    request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "image/png");
+  });
 
   webServer.on("/navigation/map-list", HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -1185,7 +1186,6 @@ void webServerSetup(){
       timerRestart(timer2);
     }
   );
-  //
 
   webServer.on("/redirect.html", HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -1200,64 +1200,71 @@ void webServerSetup(){
     }
   );
 
-  webServer.onRequestBody(
-        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
-        {
-            if ((request->url() == "/settings/settings_form") && (request->method() == HTTP_POST))
-            {
-                if (DeserializationError::Ok == deserializeJson(configDoc, (const char*)data))
-                {
-                    JsonObject obj = configDoc.as<JsonObject>();
-                    putJSONConfigDataInMemory();
-                    saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
-                    if(config.asAP){
-                      delay(1000);
-                      esp_restart();
-                    }
-                }
-                request->send(200, "application/json", "{ \"status\": 0 }");
-            } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
-            {
-                if (DeserializationError::Ok == deserializeJson(calDataDoc, (const char*)data))
-                {
-                    JsonObject obj = calDataDoc.as<JsonObject>();
-                    putJSONCalibrationDataInMemory();
-                    saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
-                }
-                request->send(200, "application/json", "{ \"status\": 0 }");
-            } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
-            {
-                if (DeserializationError::Ok == deserializeJson(debugSettingsDoc, (const char*)data))
-                {
-                    JsonObject obj = debugSettingsDoc.as<JsonObject>();
-                    putJSONDebugSettingsInMemory();
-                    saveDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
-                }
-                request->send(200, "application/json", "{ \"status\": 0 }");
-            } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
-            {
-                // /navigation/register-map"
-                if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
-                {
-                    JsonObject obj = mapListDoc.as<JsonObject>();
-                    addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
-                }
-                request->send(200, "application/json", "{ \"status\": 0 }");
-            } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
-            {
-                // /navigation/request-map"
-                if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
-                {
-                    JsonObject obj = selectedMapJSON.as<JsonObject>();
-                    putJSONSelectedMapInMemory(obj["id"], obj["name"],obj["area"],obj["country"],obj["pngFile"],obj["kmlFile"]);
-                    Serial.println(selectedMap.map_pngFile);
-                    
-
-                }
-                request->send(200, "application/json", "{ \"status\": 0 }");
-            }     
-        }
-    );
+  webServer.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+    {
+      if ((request->url() == "/settings/settings_form") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(configDoc, (const char*)data))
+          {
+              JsonObject obj = configDoc.as<JsonObject>();
+              putJSONConfigDataInMemory();
+              saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+              if(config.asAP){
+                delay(1000);
+                esp_restart();
+              }
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(calDataDoc, (const char*)data))
+          {
+              JsonObject obj = calDataDoc.as<JsonObject>();
+              putJSONCalibrationDataInMemory();
+              saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(debugSettingsDoc, (const char*)data))
+          {
+              JsonObject obj = debugSettingsDoc.as<JsonObject>();
+              putJSONDebugSettingsInMemory();
+              saveDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+          {
+              JsonObject obj = mapListDoc.as<JsonObject>();
+              addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
+          {
+              JsonObject obj = selectedMapJSON.as<JsonObject>();
+              putJSONSelectedMapInMemory(obj["id"], obj["name"],obj["area"],obj["country"],obj["pngFile"],obj["kmlFile"]);
+              Serial.println(selectedMap.map_pngFile);
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/navigation/clear-map") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
+          {
+              JsonObject obj = selectedMapJSON.as<JsonObject>();
+              String pngFile = obj["pngFile"];
+              String kmlFile = obj["kmlFile"];
+              deleteFile(LittleFS, (pngFile).c_str());
+              deleteFile(LittleFS, (kmlFile).c_str());
+              addMaptoDB("NoMap.png","NoMap.kml", obj);
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");
+      }     
+    }
+  );
 
   webServer.on(fileCss.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -1285,10 +1292,22 @@ void webServerSetup(){
 
   webServer.on("/listFiles", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      listDir(LittleFS, mapsDir.c_str(), 0);
-      request->send(200, "application/json", "{ \"status\": 0 }");
+      String fileListing = listDir(LittleFS, "/", 2);
+      request->send(200, "application/json", "{ \"listing\": " + fileListing + "}");
     }
   );
+
+  webServer.on("^\\/deletePNGFile\\/([a-zA-Z0-9_]+.[A-Za-z]{3})$", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String PNGFile = request->pathArg(0);
+    deleteFile(LittleFS, (mapsDir + "/" + PNGFile).c_str());
+    request->send(200, "application/json", "{ \"status\": 0 }");
+  });
+
+  webServer.on("^\\/deleteKMLFile\\/([a-zA-Z0-9_]+.[A-Za-z]{3})$", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String KMLFile = request->pathArg(0);
+    deleteFile(LittleFS, (mapsDir + "/" + KMLFile).c_str());
+    request->send(200, "application/json", "{ \"status\": 0 }");
+  });
 
   webServer.on("/getGPSTimeDate", HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -1305,6 +1324,15 @@ void webServerSetup(){
   webServer.on("/getGPSDate", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(200, "application/json", "{ \"GPSDate\" : \"" + GPSDate + "\" }");
+    }
+  );
+
+  webServer.on("/getGPSPosition", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String lat = String(sensorData.ownLat, 8);
+      String lon = String(sensorData.ownLon,8);
+
+      request->send(200, "application/json", "{ \"GPSLat\" : " + lat + ", \"GPSLon\" : " + lon +  "}" );
     }
   );
 
@@ -1399,19 +1427,6 @@ void webServerSetup(){
     }
   );
 
-  // webServer.on("/maps/BW12.png", HTTP_GET, [](AsyncWebServerRequest *request)
-  //   {
-  //     Serial.println("selectemap called");
-
-  //     request->send(LittleFS, selectedMap.map_pngFile, "image/png");  
-  //   }
-  // );
-
-  webServer.on("^\\/sensor\\/([0-9]+)$", HTTP_GET, [] (AsyncWebServerRequest *request) {
-      String sensorNumber = request->pathArg(0);
-      request->send(200, "text/plain", "Hello, sensor: " + sensorNumber);
-  });
-
   webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest * request) {
     request->send(200);
   }, handleUpload);
@@ -1437,7 +1452,7 @@ void webServerSetup(){
 }
 
 void timerSetup(){
-  // timer0 setup
+// timer0 setup
   timer0 = timerBegin(0, 80, true);
   timerAttachInterrupt(timer0, &onTimer0, true);
   timerAlarmWrite(timer0, (config.gpsPollSec * 1000000), true);           // 1000 ms
@@ -1466,7 +1481,6 @@ void PWMSetup(){
 
 void wifiSetup(){
       delay(500);
-    // Connect to Wi-Fi network with SSID and password
   if (config.asAP) {
       delay(1000);
       WiFi.mode( WIFI_MODE_APSTA );
@@ -1624,7 +1638,6 @@ if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
   delay(1000);
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
-  printFreeSpace();
   loadMap(config.selectedMap);
   haptiCapReady();
 }
