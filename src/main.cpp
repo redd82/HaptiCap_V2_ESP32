@@ -39,7 +39,7 @@ struct Config {
   uint8_t http_port = 80;
   uint8_t dns_port = 53;
   bool asAP = false;
-  char clientSSID[16] = "TrizNet_AP2";
+  char clientSSID[25] = "Get_out_of_my_laboratory";
   char clientPasswd[16] = "T0sh7b49";
   int connectionTimeOut = 120;
   char deviceName[16] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
@@ -522,7 +522,7 @@ void saveConfiguration(fs::FS &fs, const char * path) {
 void putJSONConfigDataInMemory(){
   config.asAP = configDoc["asAP"].as<bool>();
   String tempClientSSID = configDoc["clientSSID"];
-  tempClientSSID.toCharArray(config.clientSSID, 16);
+  tempClientSSID.toCharArray(config.clientSSID, 25);
   String tempClientPasswd = configDoc["clientPasswd"];
   tempClientPasswd.toCharArray(config.clientPasswd, 16);
   config.connectionTimeOut = configDoc["connectionTimeOut"].as<int>();
@@ -1724,7 +1724,7 @@ if (asAP) {
     intCounterWifi++;
       if (intCounterWifi > 120){
         Serial.println("");
-        asAP = 1;
+        config.asAP = 1;
         saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
         delay(1000);
         ESP.restart();          
