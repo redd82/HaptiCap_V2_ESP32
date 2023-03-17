@@ -13,7 +13,7 @@
 #include "functions.h"
 
 #define FORMAT_LITTLEFS_IF_FAILED true
-#define SWVERSION 2.001
+#define SWVERSION 2.01
 #define MPU9250_ADDR 0x68
 #define MAX_SRV_CLIENTS 2
 #define INPUT_SIZE 20
@@ -21,8 +21,8 @@
 #define CALDATA_JSON_DOCSIZE 768
 #define DEBUGSETTINGS_JSON_DOCSIZE 768
 #define SENSORDATA_JSON_DOCSIZE 1024
-#define MAPRECIEVED_JSON_DOCSIZE 256
-#define MAPLIST_JSON_DOCSIZE 1536
+#define MAPRECIEVED_JSON_DOCSIZE 768
+#define MAPLIST_JSON_DOCSIZE 4096
 #define NROFWAYPOINTS 20
 #define NROFMAPS 8
 
@@ -39,8 +39,8 @@ struct Config {
   uint8_t http_port = 80;
   uint8_t dns_port = 53;
   bool asAP = false;
-  char clientSSID[25] = "Get_out_of_my_laboratory";
-  char clientPasswd[16] = "T0sh7b49";
+  char clientSSID[25] = "TrizNet_AP";
+  char clientPasswd[16] = "S4pphi099#";
   int connectionTimeOut = 120;
   char deviceName[16] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
   char apPasswd[16] = "prutser00";
@@ -119,11 +119,23 @@ struct Waypoints {
 struct SelectedMap {
   // id, name, country, area, mapfile, kmlfile
   int map_id; // 1
-  char map_name[16] = ""; // "Test area"
-  char map_area[16] = ""; // "Kaag en Braassem"
-  char map_country[16] = ""; // "Netherlands"
-  char map_pngFile[16] = ""; // "kaagenbraassem.png"
+  char map_name[32] = ""; // "Test area"
+  char map_area[32] = ""; // "Kaag en Braassem"
+  char map_country[64] = ""; // "Netherlands"
+  char map_pngFile[32] = ""; // "kaagenbraassem.png"
+  int imageWidth = 0;
+  int imageHeight = 0;
   char map_kmlFile[16] = ""; // "kaagenbraassem.kml"
+  double realWorldHeight = 0.0;
+  double realWorldWidth = 0.0;
+  float scaleHeight = 1.0;
+  float scaleWidth = 1.0;
+  double north = 0.0;
+  double west = 0.0;
+  double south = 0.0;
+  double east = 0.0;
+  float rotation = 0.0;
+  int radius = 63713000;
 };
 
 StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
@@ -780,14 +792,31 @@ void removeMapFromDB(String filenName, int id){
 }
 
 // map management
-void putJSONSelectedMapInMemory(int mapSelector, String name, String area, String country, String PNGFile, String KMLFile) {
-  selectedMap.map_id = mapSelector;
-  name.toCharArray(selectedMap.map_name, 16);
-  area.toCharArray(selectedMap.map_area, 16);
-  country.toCharArray(selectedMap.map_country, 16);
-  PNGFile.toCharArray(selectedMap.map_pngFile, 16);
-  KMLFile.toCharArray(selectedMap.map_kmlFile, 16);
-}
+void putJSONSelectedMapInMemory(JsonObject map) {
+  selectedMap.map_id = map["id"];
+  String temp = map["name"];
+  temp.toCharArray(selectedMap.map_name, 32);
+  String temp2 = map["area"];
+  temp.toCharArray(selectedMap.map_area, 32);
+  String temp3 = map["country"];
+  temp.toCharArray(selectedMap.map_country, 64);
+  String temp4 = map["pngFile"];
+  temp.toCharArray(selectedMap.map_pngFile, 32);
+  selectedMap.imageWidth = map["imageWidth"];
+  selectedMap.imageHeight = map["imageHeight"];
+  String temp5 = map["kmlFile"];
+  temp.toCharArray(selectedMap.map_kmlFile, 32);
+  selectedMap.realWorldHeight = map["realWorldHeight"];
+  selectedMap.realWorldWidth = map["realWorldWidth"];
+  selectedMap.scaleHeight = map["scaleHeight"];
+  selectedMap.scaleWidth = map["scaleWidth"];
+  selectedMap.north = map["north"];
+  selectedMap.west = map["west"];
+  selectedMap.south = map["south"];
+  selectedMap.east = map["east"];
+  selectedMap.rotation = map["rotation"];
+  selectedMap.radius = map["radius"];
+  }
 
 void saveMapList(fs::FS &fs, const char * path) {
   deleteFile(LittleFS, path);
@@ -805,7 +834,8 @@ void saveMapList(fs::FS &fs, const char * path) {
   file.close();
 }
 
-void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name, String area, String country, String pngFile, String kmlFile){
+void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name, String area, String country, String pngFile, int imageWidth, int imageHeight,String kmlFile,
+                    double realWorldHeight, double realWorldWidth, float scaleHeight, float scaleWidth, double north, double west, double south, double east, float rotation, int radius){
   Serial.println("Writing map from recieved data.");
   File file = fs.open(path, FILE_READ);
   DeserializationError error = deserializeJson(mapListDoc, file);
@@ -824,7 +854,19 @@ void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name
       map["area"] = area;
       map["country"] = country;
       map["pngFile"] = pngFile;
+      map["imageWidth"] = imageWidth;
+      map["imageHeight"] = imageHeight;
       map["kmlFile"] = kmlFile;
+      map["realWorldHeight"] = realWorldHeight;
+      map["realWorldWidth"] = realWorldWidth;
+      map["scaleHeight"] = scaleHeight;
+      map["scaleWidth"] = scaleWidth;
+      map["north"] = north;
+      map["west"] = west;
+      map["south"] = south;
+      map["east"] = east;
+      map["rotation"] = rotation;
+      map["radius"] = radius;
     }
   }
   serializeJson(mapListDoc, Serial);
@@ -846,11 +888,24 @@ void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
   for (JsonObject map : mapListDoc["maps"].as<JsonArray>()) {
     int map_id = map["id"];
     if(requestedMap == map_id){
-      const char* map_name = map["name"];
-      const char* map_area = map["area"];
-      const char* map_country = map["country"];
-      const char* map_pngFile = map["pngFile"];
-      const char* map_kmlFile = map["kmlFile"];
+      selectedMapJSON["id"] = map["id"];
+      selectedMapJSON["name"] = map["name"];
+      selectedMapJSON["area"] = map["area"];
+      selectedMapJSON["country"] = map["country"];
+      selectedMapJSON["pngFile"] = map["pngFile"];
+      selectedMapJSON["imageWidth"] = map["imageWidth"];
+      selectedMapJSON["imageHeight"] = map["imageHeight"];
+      selectedMapJSON["kmlFile"] = map["kmlFile"];
+      selectedMapJSON["realWorldHeight"] = map["realWorldHeight"];
+      selectedMapJSON["realWorldWidth"] = map["realWorldWidth"];
+      selectedMapJSON["scaleHeight"] = map["scaleHeight"];
+      selectedMapJSON["scaleWidth"] = map["scaleWidth"];
+      selectedMapJSON["north"] = map["north"];
+      selectedMapJSON["west"] = map["west"];
+      selectedMapJSON["south"] = map["south"];
+      selectedMapJSON["east"] = map["east"];
+      selectedMapJSON["rotation"] = map["rotation"];
+      selectedMapJSON["radius"] = map["radius"];
     }
   }
 }
@@ -881,14 +936,27 @@ void loadMap(int requestedMap){
 
 void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
   int id = obj["id"];
+  mapSelector = id;
   String name = obj["name"];
   String area = obj["area"];
   String country = obj["country"];
   PNGFile = mapsDir + "/" + PNGFile;
+  int imageWidth = obj["imageWidth"];
+  int imageHeight = obj["imageHeight"];
   KMLFile = mapsDir + "/" + KMLFile;
-  mapSelector = id;
+  double realWorldHeight = obj["realWorldHeight"];
+  double realWorldWidth = obj["realWorldWidth"];
+  float scaleHeight = obj["scaleHeight"];
+  float scaleWidth = obj["scaleWidth"];
+  double north = obj["north"];
+  double west = obj["west"];
+  double south = obj["south"];
+  double east = obj["east"];
+  float rotation = obj["rotation"];
+  int radius = obj["radius"];
   serializeJson(mapListDoc, Serial);
-  writeMapToJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapSelector, name, area, country, PNGFile, KMLFile);
+  writeMapToJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapSelector, name, area, country, PNGFile, imageWidth, imageHeight,  
+                             KMLFile,realWorldHeight, realWorldWidth,scaleHeight, scaleWidth, north, west, south, east, rotation, radius);
 };
 
 // GPS functions
@@ -1314,6 +1382,7 @@ void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t i
     request->send(200, "application/json", response );
     LittleFS.remove("/maps/temp.png");
     listDir(LittleFS, mapsDir.c_str(), 0);
+    printFreeSpace();
   }
 }
 
@@ -1355,7 +1424,15 @@ void webServerSetup(){
 
   webServer.on("^\\/maps\\/([a-zA-Z0-9_]+.[A-Za-z]{3})$", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String mapFile = request->pathArg(0);
-    request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "image/png");
+     if(mapFile.endsWith(".png")){
+        //Serial.println("png file");
+      request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "image/png");
+     }else if(mapFile.endsWith(".kml")){
+        //Serial.println("kml file");
+      request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "application/vnd.google-earth.kml+xml");
+     }else{
+      request->send(200, "application/json", "{ \"status\": No png or kml file requested }");
+     }
   });
 
   webServer.on("/navigation/map-list", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -1454,18 +1531,37 @@ void webServerSetup(){
           if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
           {
               JsonObject obj = mapListDoc.as<JsonObject>();
-              addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
+              String pngFile = obj["pngFile"];
+              String kmlFile = obj["kmlFile"]; 
+              // addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
+              addMaptoDB(pngFile, kmlFile, obj);
           }
           request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/navigation/update-map") && (request->method() == HTTP_POST))
+      {
+          if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+          {
+              JsonObject obj = mapListDoc.as<JsonObject>();
+              String pngFile = obj["pngFile"];
+              String kmlFile = obj["kmlFile"]; 
+              Serial.println(pngFile);
+              Serial.println(kmlFile);
+              addMaptoDB(pngFile, kmlFile, obj);
+          }
+          request->send(200, "application/json", "{ \"status\": 0 }");          
       } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
       {
+          String output = "{ \"status\": 0 }";
           if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
           {
               JsonObject obj = selectedMapJSON.as<JsonObject>();
-              putJSONSelectedMapInMemory(obj["id"], obj["name"],obj["area"],obj["country"],obj["pngFile"],obj["kmlFile"]);
+              readMapFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), obj["id"]);
+              //putJSONSelectedMapInMemory(obj);
+              output = "";
+              serializeJson(selectedMapJSON, output);
               Serial.println(selectedMap.map_pngFile);
           }
-          request->send(200, "application/json", "{ \"status\": 0 }");
+          request->send(200, "application/json", output);
       } else if ((request->url() == "/navigation/clear-map") && (request->method() == HTTP_POST))
       {
           if (DeserializationError::Ok == deserializeJson(selectedMapJSON, (const char*)data))
