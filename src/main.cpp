@@ -303,8 +303,19 @@ static void smartDelay(unsigned long ms){
   unsigned long start = millis();
   do 
   {
-    while (Serial2.available())
-     gps.encode(Serial2.read());   
+    while (Serial2.available()){
+      if(debugSettings.debugGPS2Serial){
+        while (Serial2.available() > 0 && debugSettings.debugGPS2Serial) {    
+          Serial.write(Serial2.read()); 
+        }
+        while (Serial.available() > 0 && debugSettings.debugGPS2Serial) {    
+          Serial2.write(Serial.read()); 
+        }
+        gps.encode(Serial2.read());
+      }else{
+        gps.encode(Serial2.read());
+      }
+    }
   } 
   while (millis() - start < ms);
 }
@@ -346,7 +357,6 @@ String printFreeSpace(){
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     String filesListing = "";
     String dirName = dirName.c_str();
-    //Serial.printf("Listing directory: %s\r\n", dirname);
     filesListing = "Listing directory: " + dirName;
     File root = fs.open(dirname);
     if(!root){
@@ -361,19 +371,13 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     File file = root.openNextFile();
     while(file){
         if(file.isDirectory()){
-            //Serial.print("  DIR : ");
             filesListing = filesListing + "\n" + "  DIR : ";
-            //Serial.println(file.name());
             filesListing = filesListing + "\n" + file.name();
             if(levels){
                 listDir(fs, file.path(), levels -1);
             }
         } else {
-            //Serial.print("  FILE: ");
-            //Serial.print(file.name());
             filesListing = filesListing + "\n" + "  FILE: " + file.name();
-            //Serial.print("\tSIZE: ");
-            //Serial.println(file.size());
             filesListing = filesListing + "\t SIZE: " + file.size();
         }
         file = root.openNextFile();
@@ -383,7 +387,6 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
 
     if(levels == 0){
       return filesListing;
-      //return (filesListing + "\n" + printFreeSpace());
     }else{
       return filesListing;
     }
@@ -775,8 +778,10 @@ String prepMapNameForMapDB(String fileName){
       uploadedPNGFile = fileName;
     }else if (fileName.endsWith(".kml")){
       uploadedKMLFile = fileName;
+    if(debugSettings.debug2Serial){
       Serial.println(uploadedPNGFile + " uploaded.");
       Serial.println(uploadedKMLFile + " uploaded.");
+    }
       response = "Files uploaded.";
     }else{
       Serial.println("Wrong type of file.");
@@ -869,7 +874,9 @@ void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name
       map["radius"] = radius;
     }
   }
-  serializeJson(mapListDoc, Serial);
+  if(debugSettings.debug2Serial){
+    serializeJson(mapListDoc, Serial);
+  }
   saveMapList(LittleFS, path);
   Serial.println("");
 }
@@ -954,7 +961,40 @@ void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
   double east = obj["east"];
   float rotation = obj["rotation"];
   int radius = obj["radius"];
-  serializeJson(mapListDoc, Serial);
+  if(debugSettings.debug2Serial){
+    serializeJson(mapListDoc, Serial);
+  }
+  writeMapToJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapSelector, name, area, country, PNGFile, imageWidth, imageHeight,  
+                             KMLFile,realWorldHeight, realWorldWidth,scaleHeight, scaleWidth, north, west, south, east, rotation, radius);
+};
+
+void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdated, bool kmlUpdated){
+  int id = obj["id"];
+  mapSelector = id;
+  String name = obj["name"];
+  String area = obj["area"];
+  String country = obj["country"];
+  if(pngUpdated){
+    PNGFile = mapsDir + "/" + PNGFile;
+  }
+  int imageWidth = obj["imageWidth"];
+  int imageHeight = obj["imageHeight"];
+  if(kmlUpdated){
+    KMLFile = mapsDir + "/" + KMLFile;
+  }
+  double realWorldHeight = obj["realWorldHeight"];
+  double realWorldWidth = obj["realWorldWidth"];
+  float scaleHeight = obj["scaleHeight"];
+  float scaleWidth = obj["scaleWidth"];
+  double north = obj["north"];
+  double west = obj["west"];
+  double south = obj["south"];
+  double east = obj["east"];
+  float rotation = obj["rotation"];
+  int radius = obj["radius"];
+  if(debugSettings.debug2Serial){
+    serializeJson(mapListDoc, Serial);
+  }
   writeMapToJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapSelector, name, area, country, PNGFile, imageWidth, imageHeight,  
                              KMLFile,realWorldHeight, realWorldWidth,scaleHeight, scaleWidth, north, west, south, east, rotation, radius);
 };
@@ -1367,7 +1407,6 @@ String processor(const String& var){
 
 void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t index, uint8_t *data, size_t len, bool final){
   String response = "";
-  // Serial.println("handling upload");
   if (!index) {
     String fileForDeletion = mapsDir + "/" + filenameLocal;
     LittleFS.rename(fileForDeletion.c_str(), "/maps/temp.png");
@@ -1425,10 +1464,8 @@ void webServerSetup(){
   webServer.on("^\\/maps\\/([a-zA-Z0-9_]+.[A-Za-z]{3})$", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String mapFile = request->pathArg(0);
      if(mapFile.endsWith(".png")){
-        //Serial.println("png file");
       request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "image/png");
      }else if(mapFile.endsWith(".kml")){
-        //Serial.println("kml file");
       request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "application/vnd.google-earth.kml+xml");
      }else{
       request->send(200, "application/json", "{ \"status\": No png or kml file requested }");
@@ -1543,10 +1580,20 @@ void webServerSetup(){
           {
               JsonObject obj = mapListDoc.as<JsonObject>();
               String pngFile = obj["pngFile"];
-              String kmlFile = obj["kmlFile"]; 
+              String kmlFile = obj["kmlFile"];
+              bool pngUpdated = false;
+              bool kmlUpdated = false;
+               if(!pngFile.startsWith("/maps/")){
+                  pngUpdated = true;
+               }
+               if(!kmlFile.startsWith("/maps/")){
+                  kmlUpdated = true;
+               }
+            if(debugSettings.debug2Serial){
               Serial.println(pngFile);
               Serial.println(kmlFile);
-              addMaptoDB(pngFile, kmlFile, obj);
+            }
+              updateMaptoDB(pngFile, kmlFile, obj, pngUpdated, kmlUpdated);
           }
           request->send(200, "application/json", "{ \"status\": 0 }");          
       } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
@@ -1559,7 +1606,9 @@ void webServerSetup(){
               //putJSONSelectedMapInMemory(obj);
               output = "";
               serializeJson(selectedMapJSON, output);
+            if(debugSettings.debug2Serial){
               Serial.println(selectedMap.map_pngFile);
+            }
           }
           request->send(200, "application/json", output);
       } else if ((request->url() == "/navigation/clear-map") && (request->method() == HTTP_POST))
@@ -1726,10 +1775,6 @@ void webServerSetup(){
   }, handleUpload);
 
   webServer.onFileUpload(handleUpload);
-
-  // webServer.onNotFound([](AsyncWebServerRequest * request) {
-  //   request->send( 200, "text/html", "URI Not Found" );
-  // });
 
   webServer.onNotFound( []( AsyncWebServerRequest * request )
     {
@@ -1901,7 +1946,6 @@ void littleFSSetup(){
 
 void haptiCapReady(){
   Serial.print("HaptiCap ready @ ");
-  //printCPUSpeed();
   Serial.print(getCpuFrequencyMhz());
   Serial.println(" MHz");
   Serial.println(getGPSTimeMinsSecs() + " " + getGPSDate());
@@ -1961,49 +2005,53 @@ void setup(){
   webServerSetup();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
-  // loadMap(config.selectedMap);
   haptiCapReady();
 }
 
 void loop(){
-  if(asAP){  
-    dnsServer.processNextRequest();
-  }
-
-// Start of main code.
-  if(timers_disabled){
-    timers_disabled = 0; 
-    timerStart(timer0);
-    timerStart(timer1);
-    timerStart(timer2);                
-  }
-
-  if(interrupt0 > 0){
-    portENTER_CRITICAL(&timer0Mux);
-    interrupt0--;    
-    portEXIT_CRITICAL(&timer0Mux);
-      updateSensorData();
+  if(debugSettings.debugGPS2Serial){
+    smartDelay(50);
+  }else{
+ 
+    if(asAP){  
+      dnsServer.processNextRequest();
     }
 
-  if(interrupt1 > 0){
-    portENTER_CRITICAL(&timer1Mux);
-    interrupt1--;      
-    portEXIT_CRITICAL(&timer1Mux);
-    sensorData.compassHeading = GetCompassHeading();
-    if(interrupt1 > 10){
-      interrupt1 = 2;
-    }                 
-  }
+  // Start of main code.
+    if(timers_disabled){
+      timers_disabled = 0; 
+      timerStart(timer0);
+      timerStart(timer1);
+      timerStart(timer2);                
+    }
 
-  // if(interrupt2){
-  //   portENTER_CRITICAL(&timer2Mux);
-  //   interrupt2--;
-  //   portEXIT_CRITICAL(&timer2Mux);
-  //   Serial.println(F("Going to sleep... ZZZZZZZZZZZzzzzzzzzzzZZZZZZZZZzzzzzzzzzz"));
-  //   bYouRang = 0;
-  //   interrupt0 = 0;
-  //   interrupt1 = 0;
-  //   interrupt2 = 0;
-  //   esp_deep_sleep_start();          
-  // }
+    if(interrupt0 > 0){
+      portENTER_CRITICAL(&timer0Mux);
+      interrupt0--;    
+      portEXIT_CRITICAL(&timer0Mux);
+        updateSensorData();
+      }
+
+    if(interrupt1 > 0){
+      portENTER_CRITICAL(&timer1Mux);
+      interrupt1--;      
+      portEXIT_CRITICAL(&timer1Mux);
+      sensorData.compassHeading = GetCompassHeading();
+      if(interrupt1 > 10){
+        interrupt1 = 2;
+      }                 
+    }
+
+    // if(interrupt2){
+    //   portENTER_CRITICAL(&timer2Mux);
+    //   interrupt2--;
+    //   portEXIT_CRITICAL(&timer2Mux);
+    //   Serial.println(F("Going to sleep... ZZZZZZZZZZZzzzzzzzzzzZZZZZZZZZzzzzzzzzzz"));
+    //   bYouRang = 0;
+    //   interrupt0 = 0;
+    //   interrupt1 = 0;
+    //   interrupt2 = 0;
+    //   esp_deep_sleep_start();          
+    // }
+  }
 }
