@@ -1782,7 +1782,7 @@ void webServerSetup(){
       request->send(200);
       //timerRestart(timer2);
     } else {
-      request->send(LittleFS, "/redirect.html", "text/html");
+      request->send(LittleFS, "/redirect.html",  String(), false, processor);
       //timerRestart(timer2);
       Serial.println("redirect called");
     }
