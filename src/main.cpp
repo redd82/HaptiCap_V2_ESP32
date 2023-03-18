@@ -299,27 +299,6 @@ WiFiClient serverClients[MAX_SRV_CLIENTS];
 AsyncWebServer webServer(config.http_port);
 DNSServer dnsServer;
 
-static void smartDelay(unsigned long ms){
-  unsigned long start = millis();
-  do 
-  {
-    while (Serial2.available()){
-      if(debugSettings.debugGPS2Serial){
-        while (Serial2.available() > 0 && debugSettings.debugGPS2Serial) {    
-          Serial.write(Serial2.read()); 
-        }
-        while (Serial.available() > 0 && debugSettings.debugGPS2Serial) {    
-          Serial2.write(Serial.read()); 
-        }
-        gps.encode(Serial2.read());
-      }else{
-        gps.encode(Serial2.read());
-      }
-    }
-  } 
-  while (millis() - start < ms);
-}
-
 void callbackT0(){
   /*
   if (!bYouRang){
@@ -357,7 +336,6 @@ String printFreeSpace(){
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     String filesListing = "";
     String dirName = dirName.c_str();
-    filesListing = "Listing directory: " + dirName;
     File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
@@ -382,8 +360,6 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         }
         file = root.openNextFile();
     }
-    Serial.println("Listing:");
-    Serial.println(filesListing.c_str());
 
     if(levels == 0){
       return filesListing;
@@ -772,6 +748,7 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
   }
 }
 
+// map management
 String prepMapNameForMapDB(String fileName){
   String response = "";
     if(fileName.endsWith(".png")){
@@ -796,7 +773,6 @@ void removeMapFromDB(String filenName, int id){
     Serial.println("Removing map from DB.");
 }
 
-// map management
 void putJSONSelectedMapInMemory(JsonObject map) {
   selectedMap.map_id = map["id"];
   String temp = map["name"];
@@ -934,11 +910,6 @@ void IRAM_ATTR readAllMapsFromJSON(fs::FS &fs, const char * path){
     const char* map_pngFile = map["pngFile"];
     const char* map_kmlFile = map["kmlFile"];
   }
-  //listDir(LittleFS, "/maps", 0);
-}
-
-void loadMap(int requestedMap){
-
 }
 
 void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj){
@@ -1000,6 +971,27 @@ void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdat
 };
 
 // GPS functions
+static void smartDelay(unsigned long ms){
+  unsigned long start = millis();
+  do 
+  {
+    while (Serial2.available()){
+      if(debugSettings.debugGPS2Serial){
+        while (Serial2.available() > 0 && debugSettings.debugGPS2Serial) {    
+          Serial.write(Serial2.read()); 
+        }
+        while (Serial.available() > 0 && debugSettings.debugGPS2Serial) {    
+          Serial2.write(Serial.read()); 
+        }
+        gps.encode(Serial2.read());
+      }else{
+        gps.encode(Serial2.read());
+      }
+    }
+  } 
+  while (millis() - start < ms);
+}
+
 String getGPSTimeMinsSecs(){
   hours = gps.time.hour() + config.timeZoneOffset;
   mins = gps.time.minute();
@@ -1426,30 +1418,13 @@ void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t i
 }
 
 void addWebServerHeaders(){
+  // Enabling CORS
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, PUT");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-// class CaptiveRequestHandler : public AsyncWebHandler {
-// public:
-//   CaptiveRequestHandler() {}
-//   virtual ~CaptiveRequestHandler() {}
-
-//   bool canHandle(AsyncWebServerRequest *request){
-//     //request->addInterestingHeader("ANY");
-//     return true;
-//   }
-
-//   void handleRequest(AsyncWebServerRequest *request) {
-//     request->send(LittleFS, "/index.html", String(), false, processor);
-//   }
-// };
-
 void webServerHandlers(){
-  // if(asAP){
-  //   webServer.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
-  // }
 }
 
 void webServerSetup(){
@@ -1760,13 +1735,6 @@ void webServerSetup(){
   webServer.on("/logo192.png", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(LittleFS, "/logo192.png", "image/png");  
-    }
-  );
-
-  webServer.on("/deleteFile", HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-      deleteFile(LittleFS, "/maps/BW12.png");
-      request->send(200, "application/json", "{ \"status\": 0 }"); 
     }
   );
 
