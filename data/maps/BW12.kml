@@ -1,18 +1,74 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
-<GroundOverlay>
-	<name>Borderwar 12</name>
-	<color>59ffffff</color>
-	<Icon>
-		<href>E:/projects/esp32/HaptiCap_V2_FE/src/app/media/mapsMock/png/BW12.png</href>
-		<viewBoundScale>0.75</viewBoundScale>
-	</Icon>
-	<LatLonBox>
-		<north>50.6564136083498</north>
-		<south>50.629979050012</south>
-		<east>14.71680539086566</east>
-		<west>14.65821870458109</west>
-		<rotation>0.3118939399719238</rotation>
-	</LatLonBox>
-</GroundOverlay>
+<Document>
+	<name>BW12.kml</name>
+	<StyleMap id="m_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#s_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#s_ylw-pushpin_hl</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="s_ylw-pushpin">
+		<IconStyle>
+			<scale>1.1</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Style id="s_ylw-pushpin_hl">
+		<IconStyle>
+			<scale>1.3</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Folder>
+		<name>Borderwar Mimon</name>
+		<open>1</open>
+		<GroundOverlay>
+			<name>Borderwar 12</name>
+			<color>59ffffff</color>
+			<Icon>
+				<href>E:/projects/esp32/HaptiCap_V2_FE/src/app/media/mapsMock/png/BW12.png</href>
+				<viewBoundScale>0.75</viewBoundScale>
+			</Icon>
+			<LatLonBox>
+				<north>50.6564136083498</north>
+				<south>50.629979050012</south>
+				<east>14.71680539086566</east>
+				<west>14.65821870458109</west>
+				<rotation>0.3118939399719238</rotation>
+			</LatLonBox>
+		</GroundOverlay>
+		<Folder>
+			<name>waypoints</name>
+			<open>1</open>
+			<Placemark>
+				<name>parking</name>
+				<LookAt>
+					<longitude>14.71222574891308</longitude>
+					<latitude>50.64068418399228</latitude>
+					<altitude>0</altitude>
+					<heading>0.0183286388671602</heading>
+					<tilt>7.713581092474241</tilt>
+					<range>1560.777939545348</range>
+					<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+				</LookAt>
+				<styleUrl>#m_ylw-pushpin</styleUrl>
+				<Point>
+					<gx:drawOrder>1</gx:drawOrder>
+					<coordinates>14.71513027661311,50.64048957945882,0</coordinates>
+				</Point>
+			</Placemark>
+		</Folder>
+	</Folder>
+</Document>
 </kml>

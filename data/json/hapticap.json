@@ -5,6 +5,7 @@
     "connectionTimeOut": 120,
     "deviceName": "HaptiCap",
     "apPasswd": "prutser00",
+    "httpPort": 80,
     "gpsPollSec": "1",
     "targetReached": "10",
     "compPollMs": "100",

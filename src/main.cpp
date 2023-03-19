@@ -479,6 +479,7 @@ void saveConfigDataToJSON(){
   configDoc["connectionTimeOut"] = config.connectionTimeOut;
   configDoc["deviceName"] = config.deviceName;
   configDoc["apPasswd"] = config.apPasswd;
+  configDoc["httpPort"] = config.http_port;
   configDoc["gpsPollSec"] = String(config.gpsPollSec);
   configDoc["targetReached"] = String(config.targetReached);  
   configDoc["compPollMs"] = String(config.compPollMs);
@@ -521,6 +522,7 @@ void putJSONConfigDataInMemory(){
   tempDeviceName.toCharArray(config.deviceName, 16);
   String tempApPasswd = configDoc["apPasswd"];
   tempApPasswd.toCharArray(config.apPasswd, 16);
+  config.http_port = configDoc["httpPort"].as<int>();
   config.gpsPollSec = configDoc["gpsPollSec"].as<float>();
   config.targetReached = configDoc["targetReached"].as<int>();
   config.compPollMs = configDoc["compPollMs"].as<float>();
@@ -1427,8 +1429,8 @@ void addWebServerHeaders(){
 void webServerHandlers(){
 }
 
-void webServerSetup(){
 // Webserver setup responses
+void webServerSetup(){
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(LittleFS, "/index.html", String(), false, processor);
@@ -1755,7 +1757,6 @@ void webServerSetup(){
       Serial.println("redirect called");
     }
   });
-
   
   addWebServerHeaders();
   webServerHandlers();
