@@ -115,7 +115,7 @@ struct SensorData {
 
 struct WaypointsMap {
   double homeBase[2] = { 0.0 };
-  double wayPoint [NROFWAYPOINTS] = {0.0, 0.0};
+  double wayPoint [NROFWAYPOINTS][2];
 };
 
 struct SelectedMap {
@@ -975,6 +975,38 @@ void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdat
   writeMapToJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), mapSelector, name, area, country, PNGFile, imageWidth, imageHeight,  
                              KMLFile,realWorldHeight, realWorldWidth,scaleHeight, scaleWidth, north, west, south, east, rotation, radius);
 };
+
+// Waypoints - json doc: waypointsMapsDoc  json array nested: mapWaypoints
+void readMapWaypointsFromJSON(fs::FS &fs, const char * path, int requestedMap){
+  Serial.println("Reading waypoints from waypoints.json");
+  File file = fs.open(path, FILE_READ);
+  DeserializationError error = deserializeJson(waypointsMapsDoc, file);
+  if (error) {
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  for (JsonObject mapWaypoints : waypointsMapsDoc["mapWaypoints"].as<JsonArray>()) {
+    int map_id = mapWaypoints["mapId"];
+    if(requestedMap == map_id){
+          Serial.println("requested:"); 
+          Serial.println(map_id); 
+          wayPoints.wayPoint[1][0] = mapWaypoints["wp1"][0].as<double>();
+          wayPoints.wayPoint[1][1] = mapWaypoints["wp1"][1].as<double>();
+          wayPoints.wayPoint[2][0] = mapWaypoints["wp2"][0].as<double>();
+          wayPoints.wayPoint[2][1] = mapWaypoints["wp2"][1].as<double>();       
+          wayPoints.wayPoint[3][0] = mapWaypoints["wp3"][0].as<double>();
+          wayPoints.wayPoint[3][1] = mapWaypoints["wp3"][1].as<double>();
+          wayPoints.wayPoint[4][0] = mapWaypoints["wp4"][0].as<double>();
+          wayPoints.wayPoint[4][1] = mapWaypoints["wp4"][1].as<double>();
+          Serial.println(wayPoints.wayPoint[1][0]);
+          Serial.println(wayPoints.wayPoint[1][1]);
+          Serial.println(wayPoints.wayPoint[2][0]);
+          Serial.println(wayPoints.wayPoint[2][1]);
+    }
+  }
+}
 
 // GPS functions
 static void smartDelay(unsigned long ms){
@@ -1934,6 +1966,10 @@ void touchPadSetup(){
   esp_sleep_enable_touchpad_wakeup();
 }
 
+void testFunction(){
+  readMapWaypointsFromJSON(LittleFS, (jsonDir + fileWayPointDataJSON).c_str(), 1);
+}
+
 void setup(){
   Serial.begin(SerialUSBBaud);
   Serial2.begin(GPSBaud);
@@ -1979,6 +2015,7 @@ void setup(){
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
   haptiCapReady();
+  testFunction();
 }
 
 void loop(){
