@@ -22,7 +22,7 @@
     },
     {
       "id": 2,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",
@@ -41,7 +41,7 @@
       "radius": 6371000
     },    {
       "id": 3,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",
@@ -60,7 +60,7 @@
       "radius": 6371000
     },    {
       "id": 4,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",
@@ -79,7 +79,7 @@
       "radius": 6371000
     },    {
       "id": 5,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",
@@ -98,7 +98,7 @@
       "radius": 6371000
     },    {
       "id": 6,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",
@@ -117,7 +117,7 @@
       "radius": 6371000
     },    {
       "id": 7,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",
@@ -136,7 +136,7 @@
       "radius": 6371000
     },    {
       "id": 8,
-      "name": "NoMap",
+      "name": "Click here to add map",
       "area": "NoMap",
       "country": "NoMap",
       "pngFile": "/maps/NoMap.png",

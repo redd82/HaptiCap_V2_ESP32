@@ -23,7 +23,8 @@
 #define SENSORDATA_JSON_DOCSIZE 1024
 #define MAPRECIEVED_JSON_DOCSIZE 768
 #define MAPLIST_JSON_DOCSIZE 4096
-#define NROFWAYPOINTS 20
+#define WAYPOINTS_JSON_DOCSIZE 12288
+#define NROFWAYPOINTS 30
 #define NROFMAPS 8
 
 void setup();
@@ -35,6 +36,7 @@ void loop();
 // Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
 //float declinationAngle = (declAngleDeg + (declAngleMin / 60.0)) / (180.0 / PI);
 // _Config_
+
 struct Config {
   uint8_t http_port = 80;
   uint8_t dns_port = 53;
@@ -111,9 +113,9 @@ struct SensorData {
   int nrOfSatellites = 0;
 };
 
-struct Waypoints {
-  float homeBase [2];
-  float wayPoints [NROFWAYPOINTS][3];
+struct WaypointsMap {
+  double homeBase[2] = { 0.0 };
+  double wayPoint [NROFWAYPOINTS] = {0.0, 0.0};
 };
 
 struct SelectedMap {
@@ -144,13 +146,15 @@ StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
 StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
 StaticJsonDocument <MAPLIST_JSON_DOCSIZE> mapListDoc;
 StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> selectedMapJSON;
+StaticJsonDocument <WAYPOINTS_JSON_DOCSIZE> waypointsMapsDoc;
 JsonArray maps = mapListDoc.createNestedArray("maps");
+JsonArray mapWaypoints = waypointsMapsDoc.createNestedArray("mapWaypoints");
 
 Config config;                         // <- global configuration object
 CalData caldata;
 DebugSettings debugSettings;
 SensorData sensorData;
-Waypoints wayPoints;
+WaypointsMap wayPoints;
 SelectedMap selectedMap;
 
 // _PARAMS_
