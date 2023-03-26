@@ -68,6 +68,7 @@ struct Config {
 
 // _CalData_
 struct CalData {
+  float compassOffset = 0.0;
   float magBiasX = 0.0;
   float magBiasY = 0.0;
   float magBiasZ = 0.0;
@@ -558,6 +559,7 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
 }
 
 void saveCalibrationDataToJSON(){
+  calDataDoc["compassOffset"] = String(caldata.compassOffset,2);
   calDataDoc["magBiasX"] = String(caldata.magBiasX,6);
   calDataDoc["magBiasY"] = String(caldata.magBiasY,6);
   calDataDoc["magBiasZ"] = String(caldata.magBiasZ,6);  
@@ -594,6 +596,7 @@ void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) 
 }
 
 void putJSONCalibrationDataInMemory() {
+  caldata.compassOffset = calDataDoc["compassOffset"].as<float>();
   caldata.magBiasX = calDataDoc["magBiasX"].as<float>();
   caldata.magBiasY = calDataDoc["magBiasY"].as<float>();
   caldata.magBiasZ = calDataDoc["magBiasZ"].as<float>();  
@@ -1094,6 +1097,7 @@ float GetCompassHeading(){
   previous_compassheading = compassheading;
   // Calculate heading
   float heading = atan2(magValue.y, magValue.x);
+  headingraw = heading;
   //float heading = atan2(event.magnetic.y, event.magnetic.x);
   float declinationAngle = config.declAngleRad;
   heading += declinationAngle;
@@ -1108,21 +1112,19 @@ float GetCompassHeading(){
   }
   // Convert to degrees
   float headingDegrees = heading * 180.0/M_PI;
-  headingraw = headingDegrees;
-
-    if(config.compOffset >= 0){
-      if(headingDegrees < config.compOffset){
-        headingDegrees = headingDegrees - config.compOffset + 360.0;
-      }else{
-        headingDegrees = headingDegrees - config.compOffset;
-      }
+  if(caldata.compassOffset >= 0){
+    if(headingDegrees < caldata.compassOffset){
+      headingDegrees = headingDegrees - caldata.compassOffset + 360.0;
     }else{
-        headingDegrees = headingDegrees + (-1.0 * config.compOffset);
-        if(headingDegrees >= 360)
-        {
-            headingDegrees = headingDegrees - 360;
-        }
+      headingDegrees = headingDegrees - caldata.compassOffset;
     }
+  }else{
+      headingDegrees = headingDegrees + (-1.0 * caldata.compassOffset);
+      if(headingDegrees >= 360)
+      {
+          headingDegrees = headingDegrees - 360;
+      }
+  }
   return headingDegrees;
 }
 
@@ -1193,6 +1195,8 @@ void updateSensorData(){
     sensorData.ownLon = gps.location.lng();
     flCurrentLon = gps.location.lng();
     sensorData.compassHeading = GetCompassHeading();
+    Serial.println(sensorData.compassHeading);
+    Serial.println(headingraw);
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
     sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
