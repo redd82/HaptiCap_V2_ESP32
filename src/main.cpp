@@ -1710,6 +1710,22 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/getCompassHeading", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String compassHeading = String(sensorData.compassHeading);
+      request->send(200, "application/json", "{ \"CompassHeading\" : " + compassHeading + "}" );
+    }
+  );  
+
+  webServer.on("/getGPSPositionCompassHeading", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String lat = String(sensorData.ownLat, 8);
+      String lon = String(sensorData.ownLon,8);
+      String compassHeading = String(sensorData.compassHeading);
+      request->send(200, "application/json", "{ \"GPSLat\" : " + lat + ", \"GPSLon\" : " + lon + ", \"CompassHeading\" : " + compassHeading + "}" );
+    }
+  );
+
   webServer.on("/getDeviceName", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       String deviceName = config.deviceName;
