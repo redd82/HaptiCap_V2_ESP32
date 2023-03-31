@@ -1195,8 +1195,8 @@ void updateSensorData(){
     sensorData.ownLon = gps.location.lng();
     flCurrentLon = gps.location.lng();
     sensorData.compassHeading = GetCompassHeading();
-    Serial.println(sensorData.compassHeading);
-    Serial.println(headingraw);
+    //Serial.println(sensorData.compassHeading);
+    //Serial.println(headingraw);
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
     sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
