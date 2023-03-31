@@ -75,10 +75,6 @@
 				<href>http://maps.google.com/mapfiles/kml/shapes/cross-hairs_highlight.png</href>
 			</Icon>
 		</IconStyle>
-		<BalloonStyle>
-		</BalloonStyle>
-		<ListStyle>
-		</ListStyle>
 	</Style>
 	<Style id="sn_cross-hairs">
 		<IconStyle>
@@ -87,10 +83,6 @@
 				<href>http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png</href>
 			</Icon>
 		</IconStyle>
-		<BalloonStyle>
-		</BalloonStyle>
-		<ListStyle>
-		</ListStyle>
 	</Style>
 	<Folder>
 		<name>Home</name>
@@ -193,7 +185,7 @@
 				<styleUrl>#msn_cross-hairs</styleUrl>
 				<Point>
 					<gx:drawOrder>1</gx:drawOrder>
-					<coordinates>4.666800493008571,52.19302293089135,0</coordinates>
+					<coordinates>4.666800493008571,52.19302293089136,0</coordinates>
 				</Point>
 			</Placemark>
 			<Placemark>
