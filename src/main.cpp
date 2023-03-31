@@ -867,7 +867,7 @@ void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name
 }
 
 void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
-  Serial.println("Reading maps from mapData.json");
+  //Serial.println("Reading maps from mapData.json");
   File file = fs.open(path, FILE_READ);
   DeserializationError error = deserializeJson(mapListDoc, file);
 
@@ -981,7 +981,7 @@ void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdat
 
 // Waypoints - json doc: waypointsMapsDoc  json array nested: mapWaypoints
 void readMapWaypointsFromJSON(fs::FS &fs, const char * path, int requestedMap){
-  Serial.println("Reading waypoints from waypoints.json");
+  //Serial.println("Reading waypoints from waypoints.json");
   File file = fs.open(path, FILE_READ);
   DeserializationError error = deserializeJson(waypointsMapsDoc, file);
   if (error) {
@@ -993,20 +993,19 @@ void readMapWaypointsFromJSON(fs::FS &fs, const char * path, int requestedMap){
   for (JsonObject mapWaypoints : waypointsMapsDoc["mapWaypoints"].as<JsonArray>()) {
     int map_id = mapWaypoints["mapId"];
     if(requestedMap == map_id){
-          Serial.println("requested:"); 
-          Serial.println(map_id); 
-          wayPoints.wayPoint[1][0] = mapWaypoints["wp1"][0].as<double>();
-          wayPoints.wayPoint[1][1] = mapWaypoints["wp1"][1].as<double>();
-          wayPoints.wayPoint[2][0] = mapWaypoints["wp2"][0].as<double>();
-          wayPoints.wayPoint[2][1] = mapWaypoints["wp2"][1].as<double>();       
-          wayPoints.wayPoint[3][0] = mapWaypoints["wp3"][0].as<double>();
-          wayPoints.wayPoint[3][1] = mapWaypoints["wp3"][1].as<double>();
-          wayPoints.wayPoint[4][0] = mapWaypoints["wp4"][0].as<double>();
-          wayPoints.wayPoint[4][1] = mapWaypoints["wp4"][1].as<double>();
-          Serial.println(wayPoints.wayPoint[1][0]);
-          Serial.println(wayPoints.wayPoint[1][1]);
-          Serial.println(wayPoints.wayPoint[2][0]);
-          Serial.println(wayPoints.wayPoint[2][1]);
+      for (int i = 0; i < 30; i++) {
+        String wpElement = "wp";
+        wpElement.concat(i+1);
+        //Serial.println(wpElement);
+        wayPoints.wayPoint[i][0] = mapWaypoints[wpElement][0].as<double>();
+        wayPoints.wayPoint[i][1] = mapWaypoints[wpElement][1].as<double>();
+      }      
+      //Serial.println("requested:"); 
+      //Serial.println(map_id);
+      for (int i = 0; i < 30; i++) {
+        //Serial.println(wayPoints.wayPoint[i][0],8);
+        //Serial.println(wayPoints.wayPoint[i][1],8);
+      }
     }
   }
 }
@@ -1810,7 +1809,7 @@ void webServerSetup(){
     } else {
       request->send(LittleFS, "/redirect.html",  String(), false, processor);
       //timerRestart(timer2);
-      Serial.println("redirect called");
+      //Serial.println("redirect called");
     }
   });
   
