@@ -27,6 +27,16 @@
 #define NROFWAYPOINTS 30
 #define NROFMAPS 8
 
+#define LEDCOMMON 19
+#define LED7 18
+#define LED6 5
+#define LED5 4
+#define LED4 14
+#define LED3 27
+#define LED2 26
+#define LED1 25
+#define LED0 33 
+
 // ----- Gyro
 #define MPU9250_I2C_address 0x68                                        // I2C address for MPU9250 
 #define MPU9250_I2C_master_enable 0x6A                                  // USER_CTRL[5] = I2C_MST_EN
@@ -46,7 +56,7 @@
 #define AK8963_data 0x03                                                    // Start address of XYZ data                                                                
 #define AK8963_fuse_ROM 0x10                                                // X,Y,Z fuse ROM
 
-long Loop_start;                                                     // Loop start time (uS)
+long Loop_start;                                                        // Loop start time (uS)
 
 int     Gyro_x,     Gyro_y,     Gyro_z;
 long    Gyro_x_cal, Gyro_y_cal, Gyro_z_cal;
@@ -267,9 +277,9 @@ portMUX_TYPE timer0Mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE timer1Mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE timer2Mux = portMUX_INITIALIZER_UNLOCKED;
 
-const int dta_rdy_pin = 19;
+// const int dta_rdy_pin = 19;
 const int led = 23;
-const int buttonPin = 4;
+//const int buttonPin = 4;
 const int TouchPinT0 = 4;
 const int TouchPinT3 = 15;
 int buttonState = 0;
@@ -277,7 +287,7 @@ touch_pad_t touchPin;
 int touchValueT0;
 int touchValueT3;
 
-// PWM settings for haptic feedback
+// PWM settings for haptic feedback and LED feedback
 const int distancePOI_scalar = 2;
 const int hapticfreq = 5000;
 const int resolution = 8;
@@ -289,6 +299,36 @@ const int pwmhapticfront = 0;
 const int pwmhapticright = 1;
 const int pwmhapticrear = 2;
 const int pwmhapticleft = 3;
+
+#define LEDCOMMON 19
+#define LED7 18
+#define LED6 5
+#define LED5 4
+#define LED4 14
+#define LED3 27
+#define LED2 26
+#define LED1 25
+#define LED0 33 
+
+const int ledcommon = 19;
+const int led0 = 33;
+const int led1 = 25;
+const int led2 = 26;
+const int led3 = 27;
+const int led4 = 14;
+const int led5 = 4;
+const int led6 = 5;
+const int led7 = 18;
+
+const int pwmled0 = 0;
+const int pwmled1 = 1;
+const int pwmled2 = 2;
+const int pwmled3 = 3;
+const int pwmled4 = 4;
+const int pwmled5 = 5;
+const int pwmled6 = 6;
+const int pwmled7 = 7;
+
 int pwm_front = 0;
 int pwm_right = 0;
 int pwm_rear = 0;
@@ -303,8 +343,6 @@ RTC_DATA_ATTR bool bTargetReachedAck = 0;
 RTC_DATA_ATTR bool bHomeReachedAck = 0;
 
 String str2HTML;
-
-
 
 float declAngleDeg = 1.0;
 float declAngleMin = 23.0;
@@ -349,6 +387,14 @@ int GPSFix = 0;
 bool GPSFixAccepted = 0;
 bool asAP = false;
 bool startup = false;
+bool enableLed0;
+bool enableLed1;
+bool enableLed2;
+bool enableLed3;
+bool enableLed4;
+bool enableLed5;
+bool enableLed6;
+bool enableLed7;
 
 // ISR's
 void IRAM_ATTR onTimer0(){
@@ -1590,14 +1636,6 @@ float getTiltCompensatedHeading(){
   Mag_x_hor = Mag_x * cos(Mag_pitch) + Mag_y * sin(Mag_roll) * sin(Mag_pitch) - Mag_z * cos(Mag_roll) * sin(Mag_pitch);
   Mag_y_hor = Mag_y * cos(Mag_roll) + Mag_z * sin(Mag_roll);
 
-  // ----- Disable tilt stabization if switch closed
-  if (!(digitalRead(Switch)))
-  {
-    // ---- Test equations
-    Mag_x_hor = Mag_x;
-    Mag_y_hor = Mag_y;
-  }
-
   // ----- Dampen any data fluctuations
   Mag_x_dampened = Mag_x_dampened * 0.9 + Mag_x_hor * 0.1;
   Mag_y_dampened = Mag_y_dampened * 0.9 + Mag_y_hor * 0.1;
@@ -1692,39 +1730,39 @@ float CalcRelHeading(float compforheading,float coarseforWaypoint){
   return relativeHeading;
 }
 
-void checkGPSFix(){
-  if(GPSFix > 1){
-    int pwm_up = 0;
-    if(!GPSFixAccepted){
-      while (pwm_up < 255){
-        ledcWrite(pwmhapticright, pwm_up); 
-        ledcWrite(pwmhapticfront, pwm_up);
-        ledcWrite(pwmhapticrear, pwm_up);
-        ledcWrite(pwmhapticleft, pwm_up);
-      delay(10);
-      pwm_up++;
-      }
-        ledcWrite(pwmhapticright, 0); 
-        ledcWrite(pwmhapticfront, 0);
-        ledcWrite(pwmhapticrear, 0);
-        ledcWrite(pwmhapticleft, 0);
-    }
-  }else{
-    ledcWrite(pwmhapticleft, 0);
-    ledcWrite(pwmhapticright, 255);
-    delay(200);
-    ledcWrite(pwmhapticright, 0); 
-    ledcWrite(pwmhapticfront, 255);
-    delay(200);
-    ledcWrite(pwmhapticfront, 0);
-    ledcWrite(pwmhapticrear, 255);
-    delay(200);
-    ledcWrite(pwmhapticrear, 0);
-    ledcWrite(pwmhapticleft, 255);
-    delay(200);
-    GPSFixAccepted = 0;     
-  }
-}
+// void checkGPSFix(){
+//   if(GPSFix > 1){
+//     int pwm_up = 0;
+//     if(!GPSFixAccepted){
+//       while (pwm_up < 255){
+//         ledcWrite(pwmhapticright, pwm_up); 
+//         ledcWrite(pwmhapticfront, pwm_up);
+//         ledcWrite(pwmhapticrear, pwm_up);
+//         ledcWrite(pwmhapticleft, pwm_up);
+//       delay(10);
+//       pwm_up++;
+//       }
+//         ledcWrite(pwmhapticright, 0); 
+//         ledcWrite(pwmhapticfront, 0);
+//         ledcWrite(pwmhapticrear, 0);
+//         ledcWrite(pwmhapticleft, 0);
+//     }
+//   }else{
+//     ledcWrite(pwmhapticleft, 0);
+//     ledcWrite(pwmhapticright, 255);
+//     delay(200);
+//     ledcWrite(pwmhapticright, 0); 
+//     ledcWrite(pwmhapticfront, 255);
+//     delay(200);
+//     ledcWrite(pwmhapticfront, 0);
+//     ledcWrite(pwmhapticrear, 255);
+//     delay(200);
+//     ledcWrite(pwmhapticrear, 0);
+//     ledcWrite(pwmhapticleft, 255);
+//     delay(200);
+//     GPSFixAccepted = 0;     
+//   }
+// }
 
 void updateSensorData(){
   if (millis() > 5000 && gps.charsProcessed() < 10){
@@ -1737,8 +1775,8 @@ void updateSensorData(){
     flCurrentLat = gps.location.lat();
     sensorData.ownLon = gps.location.lng();
     flCurrentLon = gps.location.lng();
-    //sensorData.compassHeading = getCompassHeading();
-    sensorData.compassHeading = getTiltCompensatedHeading();
+    sensorData.compassHeading = getCompassHeading();
+    //sensorData.compassHeading = getTiltCompensatedHeading();
     //Serial.println(sensorData.compassHeading);
     //Serial.println(headingraw);
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
@@ -1756,13 +1794,7 @@ void updateSensorData(){
     sensorData.nrOfSatellites = gps.satellites.value();
     getGPSTimeMins();
     saveSensorDataToJSON();
-    checkGPSFix();
-  }
-
-  if (nrsatt > 3){
-    digitalWrite(led,HIGH);
-  }else{
-    digitalWrite(led,LOW);
+    //checkGPSFix();
   }
 
   if (fix.isUpdated()){
@@ -1777,8 +1809,8 @@ void getInitialReadings(){
   flCurrentLat = gps.location.lat();
   sensorData.ownLon = gps.location.lng();
   flCurrentLon = gps.location.lng();
-  //sensorData.compassHeading = getCompassHeading();
-  sensorData.compassHeading = getTiltCompensatedHeading();
+  sensorData.compassHeading = getCompassHeading();
+  //sensorData.compassHeading = getTiltCompensatedHeading();
   temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
   temp.toCharArray(sensorData.compassCardinal,8);
   previous_compassheading = sensorData.compassHeading;
@@ -1798,6 +1830,7 @@ void getInitialReadings(){
 }
 
 void HapticFeedbackHeading(float relativeHeading,bool bEnable,bool debug,int distancePOI){
+Serial.println("HapticFeedback Called");
 float front;
 float right;
 float rear;
@@ -1968,6 +2001,87 @@ if (bEnable){
       delay(100);                
   }
 }
+
+void switchLedUp(int led,int speed, bool color){
+  if(color){
+    digitalWrite(LEDCOMMON,HIGH);
+  }else{
+    digitalWrite(LEDCOMMON,LOW);
+  }
+  int pwm = 0;
+  int pwm_target = 255;
+
+  while (pwm < pwm_target){
+      switch(led){
+        case 0: 
+          ledcWrite(pwmled0, pwm);
+          break;
+        case 1: 
+          ledcWrite(pwmled1, pwm);
+          break;
+        case 2: 
+          ledcWrite(pwmled2, pwm);
+          break;
+        case 3: 
+          ledcWrite(pwmled3, pwm);
+          break;
+        case 4: 
+          ledcWrite(pwmled4, pwm);
+          break;
+        case 5: 
+          ledcWrite(pwmled5, pwm);
+          break;
+        case 6: 
+          ledcWrite(pwmled6, pwm);
+          break;
+        case 7: 
+          ledcWrite(pwmled7, pwm);
+          break;             
+      }
+      delay(speed);
+      pwm++;
+     }  
+  }
+
+void switchLedDown(int led,int speed, bool color){
+  if(color){
+    digitalWrite(LEDCOMMON,HIGH);
+  }else{
+    digitalWrite(LEDCOMMON,LOW);
+  }
+  int pwm = 255;
+  int pwm_target = 0;
+  while (pwm_target < pwm){
+      switch(led){
+        case 0: 
+          ledcWrite(pwmled0, pwm);
+          break;
+        case 1: 
+          ledcWrite(pwmled1, pwm);
+          break;
+        case 2: 
+          ledcWrite(pwmled2, pwm);
+          break;
+        case 3: 
+          ledcWrite(pwmled3, pwm);
+          break;
+        case 4: 
+          ledcWrite(pwmled4, pwm);
+          break;
+        case 5: 
+          ledcWrite(pwmled5, pwm);
+          break;
+        case 6: 
+          ledcWrite(pwmled6, pwm);
+          break;
+        case 7: 
+          ledcWrite(pwmled7, pwm);
+          break;             
+      }
+      delay(speed);
+      pwm--;
+     }  
+  }  
 
 // Replaces placeholder with value for webserver
 String processor(const String& var){
@@ -2392,15 +2506,31 @@ void timerSetup(){
 
 void PWMSetup(){
 //PWM setup
-  ledcSetup(pwmhapticfront, hapticfreq, resolution);
-  ledcSetup(pwmhapticright, hapticfreq, resolution);
-  ledcSetup(pwmhapticrear, hapticfreq, resolution);
-  ledcSetup(pwmhapticleft, hapticfreq, resolution);
-  ledcAttachPin(hapticfront, pwmhapticfront);
-  ledcAttachPin(hapticright, pwmhapticright);
-  ledcAttachPin(hapticrear, pwmhapticrear);
-  ledcAttachPin(hapticleft, pwmhapticleft);
-  digitalWrite(led, 0);
+  // ledcSetup(pwmhapticfront, hapticfreq, resolution);
+  // ledcSetup(pwmhapticright, hapticfreq, resolution);
+  // ledcSetup(pwmhapticrear, hapticfreq, resolution);
+  // ledcSetup(pwmhapticleft, hapticfreq, resolution);
+  // ledcAttachPin(hapticfront, pwmhapticfront);
+  // ledcAttachPin(hapticright, pwmhapticright);
+  // ledcAttachPin(hapticrear, pwmhapticrear);
+  // ledcAttachPin(hapticleft, pwmhapticleft);
+
+  ledcSetup(pwmled0, hapticfreq, resolution);
+  ledcSetup(pwmled1, hapticfreq, resolution);
+  ledcSetup(pwmled2, hapticfreq, resolution);
+  ledcSetup(pwmled3, hapticfreq, resolution);
+  ledcSetup(pwmled4, hapticfreq, resolution);
+  ledcSetup(pwmled5, hapticfreq, resolution);
+  ledcSetup(pwmled6, hapticfreq, resolution);
+  ledcSetup(pwmled7, hapticfreq, resolution);
+  ledcAttachPin(led0, pwmled0);
+  ledcAttachPin(led1, pwmled1);
+  ledcAttachPin(led2, pwmled2);
+  ledcAttachPin(led3, pwmled3);
+  ledcAttachPin(led4, pwmled4);
+  ledcAttachPin(led5, pwmled5);
+  ledcAttachPin(led6, pwmled6);        
+  ledcAttachPin(led7, pwmled7);  
 }
 
 void wifiSetup(){
@@ -2518,21 +2648,17 @@ void magnometerSetup(){
 
 void ioSetup(){
 // Initialize outputs
-  pinMode(buttonPin,INPUT);
-  pinMode(Switch, INPUT_PULLUP);
-  pinMode(led, OUTPUT);
-  pinMode(dta_rdy_pin,INPUT);
-
-  //PWM setup
-  ledcSetup(pwmhapticfront, hapticfreq, resolution);
-  ledcSetup(pwmhapticright, hapticfreq, resolution);
-  ledcSetup(pwmhapticrear, hapticfreq, resolution);
-  ledcSetup(pwmhapticleft, hapticfreq, resolution);
-  ledcAttachPin(hapticfront, pwmhapticfront);
-  ledcAttachPin(hapticright, pwmhapticright);
-  ledcAttachPin(hapticrear, pwmhapticrear);
-  ledcAttachPin(hapticleft, pwmhapticleft);
-  digitalWrite(led, 0);
+  //pinMode(led, OUTPUT);
+  pinMode(LEDCOMMON, OUTPUT);
+  pinMode(LED0, OUTPUT);
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
+  pinMode(LED4, OUTPUT);
+  pinMode(LED5, OUTPUT);
+  pinMode(LED6, OUTPUT);
+  pinMode(LED7, OUTPUT);
+  // pinMode(dta_rdy_pin,INPUT);
 }
 
 void littleFSSetup(){
@@ -2594,8 +2720,8 @@ void setup(){
   wifiSetup();
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
-  tiltCompensatedCompassSetup();
-  //magnometerSetup();
+  //tiltCompensatedCompassSetup();
+  magnometerSetup();
   getInitialReadings();
 
   if(!asAP){
@@ -2649,12 +2775,29 @@ void loop(){
       portENTER_CRITICAL(&timer1Mux);
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
-      //sensorData.compassHeading = getCompassHeading();
-      sensorData.compassHeading = getTiltCompensatedHeading();
+      sensorData.compassHeading = getCompassHeading();
+      //sensorData.compassHeading = getTiltCompensatedHeading();
       if(interrupt1 > 10){
         interrupt1 = 2;
       }                 
     }
+
+
+  for(i = 0; i < 8; i++){
+    switchLedUp(i,5,false);
+  }
+
+  for(i = 0; i < 8; i++){
+    switchLedDown(i,5,false);
+  }
+
+  for(i = 0; i < 8; i++){
+    switchLedUp(i,5,true);
+  }
+
+  for(i = 0; i < 8; i++){
+    switchLedDown(i,5,true);
+  } 
 
     // if(interrupt2){
     //   portENTER_CRITICAL(&timer2Mux);
