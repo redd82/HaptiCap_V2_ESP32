@@ -7,8 +7,12 @@
 #include <LittleFS.h>
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
-#include <MPU9250_WE.h>
+
 #include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+
+#include "SensorFusion.h" //SF
 #include <string>
 #include "functions.h"
 
@@ -37,49 +41,23 @@
 #define LED1 25
 #define LED0 33 
 
-// ----- Gyro
-#define MPU9250_I2C_address 0x68                                        // I2C address for MPU9250 
-#define MPU9250_I2C_master_enable 0x6A                                  // USER_CTRL[5] = I2C_MST_EN
-#define MPU9250_Interface_bypass_mux_enable 0x37                        // INT_PIN_CFG[1]= BYPASS_EN
-#define Frequency 125                                                   // 8mS sample interval 
-#define Sensitivity 65.5                                                // Gyro sensitivity (see data sheet)
-#define Sensor_to_deg 1/(Sensitivity*Frequency)                         // Convert sensor reading to degrees
-#define Sensor_to_rad Sensor_to_deg*DEG_TO_RAD                          // Convert sensor reading to radians
-#define Loop_time 1000000/Frequency                                     // Loop time (uS)
+#define MPU9250_IMU_ADDRESS 0x68
+#define MPU9250_MAG_ADDRESS 0x0C
+#define GYRO_FULL_SCALE_250_DPS  0x00
+#define GYRO_FULL_SCALE_500_DPS  0x08
+#define GYRO_FULL_SCALE_1000_DPS 0x10
+#define GYRO_FULL_SCALE_2000_DPS 0x18
+#define ACC_FULL_SCALE_2G  0x00
+#define ACC_FULL_SCALE_4G  0x08
+#define ACC_FULL_SCALE_8G  0x10
+#define ACC_FULL_SCALE_16G 0x18
+#define TEMPERATURE_OFFSET 21 // As defined in documentation
+#define INTERVAL_MS_PRINT 1000
+#define G 9.80665
 
-// ----- Magnetometer
-#define AK8963_I2C_address 0x0C                                             // I2C address for AK8963
-#define AK8963_cntrl_reg_1 0x0A                                             // CNTL[4]=#bits, CNTL[3:0]=mode
-#define AK8963_status_reg_1 0x02                                            // ST1[0]=data ready
-#define AK8963_data_ready_mask 0b00000001                                   // Data ready mask
-#define AK8963_overflow_mask 0b00001000                                     // Magnetic sensor overflow mask
-#define AK8963_data 0x03                                                    // Start address of XYZ data                                                                
-#define AK8963_fuse_ROM 0x10                                                // X,Y,Z fuse ROM
-
-long Loop_start;                                                        // Loop start time (uS)
-
-int     Gyro_x,     Gyro_y,     Gyro_z;
-long    Gyro_x_cal, Gyro_y_cal, Gyro_z_cal;
-float   Gyro_pitch, Gyro_roll, Gyro_yaw;
-float   Gyro_pitch_output, Gyro_roll_output;
-
-// ----- Accelerometer
-long    Accel_x,      Accel_y,      Accel_z,    Accel_total_vector;
-float   Accel_pitch,  Accel_roll;
-
-// ----- Compass heading
-/*
-  The magnetic declination for Lower Hutt, New Zealand is +22.5833 degrees
-  Obtain your magnetic declination from http://www.magnetic-declination.com/
-  Uncomment the declination code within the main loop() if you want True North.
-*/
-float   Declination = +22.5833;                                             //  Degrees ... replace this declination with yours
-float   Heading;
-
-int     Mag_x,                Mag_y,                Mag_z;                  // Raw magnetometer readings
-float   Mag_x_dampened,       Mag_y_dampened,       Mag_z_dampened;
-float   Mag_x_hor, Mag_y_hor;
-float   Mag_pitch, Mag_roll;
+float gx, gy, gz, ax, ay, az, mx, my, mz, temp;
+float pitch, roll, yaw;
+float deltat;
 
 // ----- Record compass offsets, scale factors, & ASA values
 /*
@@ -99,16 +77,6 @@ void setupIO();
 void webServerFunctions();
 void loop();
 
-// ----- Flags
-bool Gyro_synchronised = false;
-bool Flag = false;
-
-// ----- Debug
-#define Switch 23                       // Connect an SPST switch between A0 and GND to enable/disable tilt stabilazation
-long Loop_start_time;
-long Debug_start_time;
-
-
 // Set declination angle on your location and fix heading
 // Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
 //float declinationAngle = (declAngleDeg + (declAngleMin / 60.0)) / (180.0 / PI);
@@ -125,8 +93,8 @@ struct Config {
   char apPasswd[16] = "prutser00";
   char http_username[16] = "admin";
   char http_password[16] = "admin";
-  unsigned long gpsPollSec = 1;               // Timer0 tick set to 1 s (10 * 1000 = 10000 ms) for gps 
-  unsigned long compPollMs = 100;            // Timer1 tick set to 1 ms (250 * 1 = 250 ms)  for compass 
+  unsigned long gpsPollSec = 1;              // Timer0 tick set to 1 s (1 * 1000 = 1000 ms) for gps 
+  unsigned long compPollMs = 100;            // Timer1 tick set to 1 ms (100 * 1 = 100 ms)  for compass 
   float compOffset = 123.0;
   float HOME_LAT = 12.234567;
   float HOME_LON = 56.789012;
@@ -136,7 +104,7 @@ struct Config {
   int maxDistance = 500;
   int maxDelay = 1000;
   double declAngleRad = 0.024085543678;
-  unsigned long sleepMins = 5;                // Timer2 tick set to 1 min (1 * 60000 = 250 ms)  sleep
+  unsigned long sleepMins = 5;                // Timer2 tick set to 1 min (1 * 60000 = 1 min)  sleep
   int touchThreshold = 50;
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = true;
@@ -277,6 +245,8 @@ portMUX_TYPE timer0Mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE timer1Mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE timer2Mux = portMUX_INITIALIZER_UNLOCKED;
 
+double DEG_2_RAD = 0.01745329251; //trig functions require radians, BNO055 outputs degrees
+uint16_t BNO055_SAMPLERATE_DELAY_MS = 10; //how often to read data from the board
 // const int dta_rdy_pin = 19;
 const int led = 23;
 //const int buttonPin = 4;
@@ -320,6 +290,7 @@ const int led5 = 4;
 const int led6 = 5;
 const int led7 = 18;
 
+const int pwmledcommon = 8;
 const int pwmled0 = 0;
 const int pwmled1 = 1;
 const int pwmled2 = 2;
@@ -328,6 +299,8 @@ const int pwmled4 = 4;
 const int pwmled5 = 5;
 const int pwmled6 = 6;
 const int pwmled7 = 7;
+int intensityOffsetGreen = 20;
+
 
 int pwm_front = 0;
 int pwm_right = 0;
@@ -418,7 +391,8 @@ void IRAM_ATTR onTimer2(){
 // Make sensor and server objects
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
-MPU9250_WE myMPU9250 = MPU9250_WE(MPU9250_ADDR);
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x29);
+SF fusion;
 WiFiClient serverClients[MAX_SRV_CLIENTS];
 AsyncWebServer webServer(config.http_port);
 DNSServer dnsServer;
@@ -1207,507 +1181,86 @@ String getGPSDate(){
   return GPSDate;
 }
 
-//  Read MPU 6050 data
-void read_mpu_6050_data()
-{
-  /*
-    Subroutine for reading the raw gyro and accelerometer data
-  */
+double getCompassHeading(){
+  double ACCEL_VEL_TRANSITION =  (double)(BNO055_SAMPLERATE_DELAY_MS) / 1000.0;
+  double ACCEL_POS_TRANSITION = 0.5 * ACCEL_VEL_TRANSITION * ACCEL_VEL_TRANSITION;
+  double xPos = 0, yPos = 0, headingVel = 0;
+  sensors_event_t orientationData , angVelocityData , linearAccelData, magnetometerData, accelerometerData, gravityData;
+  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+  bno.getEvent(&angVelocityData, Adafruit_BNO055::VECTOR_GYROSCOPE);
+  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+  bno.getEvent(&magnetometerData, Adafruit_BNO055::VECTOR_MAGNETOMETER);
+  bno.getEvent(&accelerometerData, Adafruit_BNO055::VECTOR_ACCELEROMETER);
+  bno.getEvent(&gravityData, Adafruit_BNO055::VECTOR_GRAVITY);
 
-  // ----- Locals
-  int     temperature;                                  // Needed when reading the MPU-6050 data ... not used
+  xPos = xPos + ACCEL_POS_TRANSITION * linearAccelData.acceleration.x;
+  yPos = yPos + ACCEL_POS_TRANSITION * linearAccelData.acceleration.y;
+  headingVel = ACCEL_VEL_TRANSITION * linearAccelData.acceleration.x / cos(DEG_2_RAD * orientationData.orientation.x);
 
-  // ----- Point to data
-  Wire.beginTransmission(0x68);                         // Start communicating with the MPU-6050
-  Wire.write(0x3B);                                     // Point to start of data
-  Wire.endTransmission();                               // End the transmission
-
-  // ----- Read the data
-  Wire.requestFrom(0x68, 14);                           // Request 14 bytes from the MPU-6050
-  while (Wire.available() < 14);                        // Wait until all the bytes are received
-  Accel_x = Wire.read() << 8 | Wire.read();             // Combine MSB,LSB Accel_x variable
-  Accel_y = Wire.read() << 8 | Wire.read();             // Combine MSB,LSB Accel_y variable
-  Accel_z = Wire.read() << 8 | Wire.read();             // Combine MSB,LSB Accel_z variable
-  temperature = Wire.read() << 8 | Wire.read();         // Combine MSB,LSB temperature variable
-  Gyro_x = Wire.read() << 8 | Wire.read();              // Combine MSB,LSB Gyro_x variable
-  Gyro_y = Wire.read() << 8 | Wire.read();              // Combine MSB,LSB Gyro_x variable
-  Gyro_z = Wire.read() << 8 | Wire.read();              // Combine MSB,LSB Gyro_x variable
-}
-
-//  Configure magnetometer
-void configure_magnetometer()
-{
-
-  /*
-     The MPU-9250 contains an AK8963 magnetometer and an
-     MPU-6050 gyro/accelerometer within the same package.
-
-     To access the AK8963 magnetometer chip The MPU-9250 I2C bus
-     must be changed to pass-though mode. To do this we must:
-      - disable the MPU-9250 slave I2C and
-      - enable the MPU-9250 interface bypass mux
-  */
-  // ----- Disable MPU9250 I2C master interface
-  Wire.beginTransmission(MPU9250_I2C_address);                      // Open session with MPU9250
-  Wire.write(MPU9250_I2C_master_enable);                            // Point USER_CTRL[5] = I2C_MST_EN
-  Wire.write(0x00);                                                 // Disable the I2C master interface
-  Wire.endTransmission();
-
-  // ----- Enable MPU9250 interface bypass mux
-  Wire.beginTransmission(MPU9250_I2C_address);                      // Open session with MPU9250
-  Wire.write(MPU9250_Interface_bypass_mux_enable);                  // Point to INT_PIN_CFG[1] = BYPASS_EN
-  Wire.write(0x02);                                                 // Enable the bypass mux
-  Wire.endTransmission();
-
-  // ----- Access AK8963 fuse ROM
-  /* The factory sensitivity readings for the XYZ axes are stored in a fuse ROM.
-     To access this data we must change the AK9863 operating mode.
-  */
-  Wire.beginTransmission(AK8963_I2C_address);                       // Open session with AK8963
-  Wire.write(AK8963_cntrl_reg_1);                                   // CNTL[3:0] mode bits
-  Wire.write(0b00011111);                                           // Output data=16-bits; Access fuse ROM
-  Wire.endTransmission();
-  delay(100);                                                       // Wait for mode change
-
-  // ----- Get factory XYZ sensitivity adjustment values from fuse ROM
-  /* There is a formula on page 53 of "MPU-9250, Register Map and Decriptions, Revision 1.4":
-      Hadj = H*(((ASA-128)*0.5)/128)+1 where
-      H    = measurement data output from data register
-      ASA  = sensitivity adjustment value (from fuse ROM)
-      Hadj = adjusted measurement data (after applying
-  */
-
-  Wire.beginTransmission(AK8963_I2C_address);                       // Open session with AK8963
-  Wire.write(AK8963_fuse_ROM);                                      // Point to AK8963 fuse ROM
-  Wire.endTransmission();
-  Wire.requestFrom(AK8963_I2C_address, 3);                          // Request 3 bytes of data
-  while (Wire.available() < 3);                                     // Wait for the data
-  caldata.ASAX = (Wire.read() - 128) * 0.5 / 128 + 1;               // Adjust data
-  caldata.ASAY = (Wire.read() - 128) * 0.5 / 128 + 1;
-  caldata.ASAZ = (Wire.read() - 128) * 0.5 / 128 + 1;
-
-  // ----- Power down AK8963 while the mode is changed
-  /*
-     This wasn't necessary for the first mode change as the chip was already powered down
-  */
-  Wire.beginTransmission(AK8963_I2C_address);                       // Open session with AK8963
-  Wire.write(AK8963_cntrl_reg_1);                                   // Point to mode control register
-  Wire.write(0b00000000);                                           // Set mode to power down
-  Wire.endTransmission();
-  delay(100);                                                       // Wait for mode change
-
-  // ----- Set output to mode 2 (16-bit, 100Hz continuous)
-  Wire.beginTransmission(AK8963_I2C_address);                       // Open session with AK8963
-  Wire.write(AK8963_cntrl_reg_1);                                   // Point to mode control register
-  Wire.write(0b00010110);                                           // Output=16-bits; Measurements = 100Hz continuous
-  Wire.endTransmission();
-  delay(100);                                                       // Wait for mode change
-}
-//  Calibrate magnetometer
-void calibrate_magnetometer()
-{
-      // ----- Record magnetometer offsets
-  /*
-     When active this feature sends the magnetometer data
-     to the Serial Monitor then halts the program.
-  */
-  if (caldata.calibrateMag == true)
-  {
-  Serial.println("Calibrating magnetometer... ");
-  // ----- Locals
-  int mag_x, mag_y, mag_z;
-  int status_reg_2;                                               // ST2 status register
-
-  int mag_x_min =  0;                                         // Raw data extremes
-  int mag_y_min =  0;
-  int mag_z_min =  0;
-  int mag_x_max = 65536;
-  int mag_y_max = 65536;
-  int mag_z_max = 65536;
-
-  float chord_x,  chord_y,  chord_z;                              // Used for calculating scale factors
-  float chord_average;
-
-  // ----- Record min/max XYZ compass readings
-  for (int counter = 0; counter < 16000 ; counter ++)             // Run this code 16000 times
-  {
-    Loop_start = micros();                                        // Start loop timer
-
-    // ----- Point to status register 1
-    Wire.beginTransmission(AK8963_I2C_address);                   // Open session with AK8963
-    Wire.write(AK8963_status_reg_1);                              // Point to ST1[0] status bit
-    Wire.endTransmission();
-    Wire.requestFrom(AK8963_I2C_address, 1);                      // Request 1 data byte
-    while (Wire.available() < 1);                                 // Wait for the data
-    if (Wire.read() & AK8963_data_ready_mask)                     // Check data ready bit
-    {
-      // ----- Read data from each axis (LSB,MSB)
-      Wire.requestFrom(AK8963_I2C_address, 7);                    // Request 7 data bytes
-      while (Wire.available() < 7);                               // Wait for the data
-      mag_x = (Wire.read() | Wire.read() << 8) * caldata.ASAX;            // Combine LSB,MSB X-axis, apply ASA corrections
-      mag_y = (Wire.read() | Wire.read() << 8) * caldata.ASAY;            // Combine LSB,MSB Y-axis, apply ASA corrections
-      mag_z = (Wire.read() | Wire.read() << 8) * caldata.ASAZ;            // Combine LSB,MSB Z-axis, apply ASA corrections
-      status_reg_2 = Wire.read();                                 // Read status and signal data read
-
-      // ----- Validate data
-      if (!(status_reg_2 & AK8963_overflow_mask))                 // Check HOFL flag in ST2[3]
-      {
-        // ----- Find max/min xyz values
-        mag_x_min = min(mag_x, mag_x_min);
-        mag_x_max = max(mag_x, mag_x_max);
-        mag_y_min = min(mag_y, mag_y_min);
-        mag_y_max = max(mag_y, mag_y_max);
-        mag_z_min = min(mag_z, mag_z_min);
-        mag_z_max = max(mag_z, mag_z_max);
-      }
-    }
-    delay(4);                                                     // Time interval between magnetometer readings
-  }
-
-  // ----- Calculate hard-iron offsets
-  int Mag_x_offset = (mag_x_max + mag_x_min) / 2;                     // Get average magnetic bias in counts
-  int Mag_y_offset = (mag_y_max + mag_y_min) / 2;
-  int Mag_z_offset = (mag_z_max + mag_z_min) / 2;
-
-  // ----- Calculate soft-iron scale factors
-  chord_x = ((float)(mag_x_max - mag_x_min)) / 2;                 // Get average max chord length in counts
-  chord_y = ((float)(mag_y_max - mag_y_min)) / 2;
-  chord_z = ((float)(mag_z_max - mag_z_min)) / 2;
-
-  chord_average = (chord_x + chord_y + chord_z) / 3;              // Calculate average chord length
-
-  float Mag_x_scale = chord_average / chord_x;                          // Calculate X scale factor
-  float Mag_y_scale = chord_average / chord_y;                          // Calculate Y scale factor
-  float Mag_z_scale = chord_average / chord_z;                          // Calculate Z scale factor
-
-  caldata.magBiasX = Mag_x_offset;
-  caldata.magBiasY = Mag_y_offset;
-  caldata.magBiasZ = Mag_z_offset;
-  caldata.magScaleFacX = Mag_x_scale;
-  caldata.magScaleFacY = Mag_y_scale;
-  caldata.magScaleFacZ = Mag_z_scale;
-
-  // ----- Record magnetometer offsets
-  /*
-     When active this feature sends the magnetometer data
-     to the Serial Monitor then halts the program.
-  */
-  // if (caldata.calibrateMag == true)
-  // {
-    // ----- Display data extremes
-    Serial.print("XYZ Max/Min: ");
-    Serial.print(mag_x_min); Serial.print("\t");
-    Serial.print(mag_x_max); Serial.print("\t");
-    Serial.print(mag_y_min); Serial.print("\t");
-    Serial.print(mag_y_max); Serial.print("\t");
-    Serial.print(mag_z_min); Serial.print("\t");
-    Serial.println(mag_z_max);
-    Serial.println("");
-
-    // ----- Display hard-iron offsets
-    Serial.print("Hard-iron: ");
-    Serial.print(caldata.magBiasX); Serial.print("\t");
-    Serial.print(caldata.magBiasY); Serial.print("\t");
-    Serial.println(caldata.magBiasZ);
-    Serial.println("");
-
-    // ----- Display soft-iron scale factors
-    Serial.print("Soft-iron: ");
-    Serial.print(caldata.magScaleFacX); Serial.print("\t");
-    Serial.print(caldata.magScaleFacY); Serial.print("\t");
-    Serial.println(caldata.magScaleFacZ);
-    Serial.println("");
-
-    // ----- Display fuse ROM values
-    Serial.print("ASA: ");
-    Serial.print(caldata.ASAX); Serial.print("\t");
-    Serial.print(caldata.ASAY); Serial.print("\t");
-    Serial.println(caldata.ASAZ);
-
-    // ----- Halt program
-    //while (true);                                       // Wheelspin ... program halt
-    saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
-  }
-}
-//  Read magnetometer
-void read_magnetometer()
-{
-  // ----- Locals
-  int mag_x, mag_y, mag_z;
-  int status_reg_2;
-  float ASAX = caldata.ASAX;
-  float ASAY = caldata.ASAY;
-  float ASAZ = caldata.ASAZ;
-  float Mag_x_scale = caldata.magScaleFacX;
-  float Mag_y_scale = caldata.magScaleFacY;
-  float Mag_z_scale = caldata.magScaleFacZ;
-  int Mag_x_offset = caldata.magBiasX;
-  int Mag_y_offset = caldata.magBiasY;
-  int Mag_z_offset = caldata.magBiasZ;
-
-  // ----- Point to status register 1
-  Wire.beginTransmission(AK8963_I2C_address);                   // Open session with AK8963
-  Wire.write(AK8963_status_reg_1);                              // Point to ST1[0] status bit
-  Wire.endTransmission();
-  Wire.requestFrom(AK8963_I2C_address, 1);                      // Request 1 data byte
-  while (Wire.available() < 1);                                 // Wait for the data
-  if (Wire.read() & AK8963_data_ready_mask)                     // Check data ready bit
-  {
-    // ----- Read data from each axis (LSB,MSB)
-    Wire.requestFrom(AK8963_I2C_address, 7);                    // Request 7 data bytes
-    while (Wire.available() < 7);                               // Wait for the data
-    mag_x = (Wire.read() | Wire.read() << 8) * ASAX;            // Combine LSB,MSB X-axis, apply ASA corrections
-    mag_y = (Wire.read() | Wire.read() << 8) * ASAY;            // Combine LSB,MSB Y-axis, apply ASA corrections
-    mag_z = (Wire.read() | Wire.read() << 8) * ASAZ;            // Combine LSB,MSB Z-axis, apply ASA corrections
-    status_reg_2 = Wire.read();                                 // Read status and signal data read
-
-    // ----- Validate data
-    if (!(status_reg_2 & AK8963_overflow_mask))                 // Check HOFL flag in ST2[3]
-    {
-      Mag_x = (mag_x - Mag_x_offset) * Mag_x_scale;
-      Mag_y = (mag_y - Mag_y_offset) * Mag_y_scale;
-      Mag_z = (mag_z - Mag_z_offset) * Mag_z_scale;
-    }
-  }
-}
-//  Configure the gyro & accelerometer
-void config_gyro()
-{
-  // ----- Activate the MPU-6050
-  Wire.beginTransmission(0x68);                         //Open session with the MPU-6050
-  Wire.write(0x6B);                                     //Point to power management register
-  Wire.write(0x00);                                     //Use internal 20MHz clock
-  Wire.endTransmission();                               //End the transmission
-
-  // ----- Configure the accelerometer (+/-8g)
-  Wire.beginTransmission(0x68);                         //Open session with the MPU-6050
-  Wire.write(0x1C);                                     //Point to accelerometer configuration reg
-  Wire.write(0x10);                                     //Select +/-8g full-scale
-  Wire.endTransmission();                               //End the transmission
-
-  // ----- Configure the gyro (500dps full scale)
-  Wire.beginTransmission(0x68);                         //Open session with the MPU-6050
-  Wire.write(0x1B);                                     //Point to gyroscope configuration
-  Wire.write(0x08);                                     //Select 500dps full-scale
-  Wire.endTransmission();                               //End the transmission
-}
-//  Calibrate gyro
-void calibrate_gyro()
-{
-  // ----- LED Status (ON = calibration start)
-  //pinMode(LED, OUTPUT);                                 //Set LED (pin 13) as output
-  //digitalWrite(LED, HIGH);                              //Turn LED on ... indicates startup
-
-  // ----- Calibrate gyro
-  for (int counter = 0; counter < 2000 ; counter ++)    //Run this code 2000 times
-  {
-    Loop_start = micros();
-    read_mpu_6050_data();                               //Read the raw acc and gyro data from the MPU-6050
-    Gyro_x_cal += Gyro_x;                               //Add the gyro x-axis offset to the gyro_x_cal variable
-    Gyro_y_cal += Gyro_y;                               //Add the gyro y-axis offset to the gyro_y_cal variable
-    Gyro_z_cal += Gyro_z;                               //Add the gyro z-axis offset to the gyro_z_cal variable
-    while (micros() - Loop_start < Loop_time);           // Wait until "Loop_time" microseconds have elapsed
-  }
-  Gyro_x_cal /= 2000;                                   //Divide the gyro_x_cal variable by 2000 to get the average offset
-  Gyro_y_cal /= 2000;                                   //Divide the gyro_y_cal variable by 2000 to get the average offset
-  Gyro_z_cal /= 2000;                                   //Divide the gyro_z_cal variable by 2000 to get the average offset
-
-  caldata.gyroBiasX = Gyro_x_cal;
-  caldata.gyroBiasY = Gyro_y_cal;
-  caldata.gyroBiasZ = Gyro_z_cal;
-  // ----- Status LED
-  // digitalWrite(LED, LOW);                               // Turn LED off ... calibration complete
-}
-
-float getTiltCompensatedHeading(){
-  ////////////////////////////////////////////
-  //        PITCH & ROLL CALCULATIONS       //
-  ////////////////////////////////////////////
-
-  /*
-     --------------------
-     MPU-9250 Orientation
-     --------------------
-     Component side up
-     X-axis facing forward
-  */
-
-  // ----- read the raw accelerometer and gyro data
-  read_mpu_6050_data();                                             // Read the raw acc and gyro data from the MPU-6050
-  Gyro_x_cal = caldata.gyroBiasX;
-  Gyro_y_cal = caldata.gyroBiasY;
-  Gyro_z_cal = caldata.gyroBiasZ;
-  // ----- Adjust for offsets
-  Gyro_x -= Gyro_x_cal;                                             // Subtract the offset from the raw gyro_x value
-  Gyro_y -= Gyro_y_cal;                                             // Subtract the offset from the raw gyro_y value
-  Gyro_z -= Gyro_z_cal;                                             // Subtract the offset from the raw gyro_z value
-
-  // ----- Calculate travelled angles
-  /*
-    ---------------------------
-    Adjust Gyro_xyz signs for:
-    ---------------------------
-    Pitch (Nose - up) = +ve reading
-    Roll (Right - wing down) = +ve reading
-    Yaw (Clock - wise rotation)  = +ve reading
-  */
-  Gyro_pitch += -Gyro_y * Sensor_to_deg;                            // Integrate the raw Gyro_y readings
-  Gyro_roll += Gyro_x * Sensor_to_deg;                              // Integrate the raw Gyro_x readings
-  Gyro_yaw += -Gyro_z * Sensor_to_deg;                              // Integrate the raw Gyro_x readings
-
-  // ----- Compensate pitch and roll for gyro yaw
-  Gyro_pitch += Gyro_roll * sin(Gyro_z * Sensor_to_rad);            // Transfer the roll angle to the pitch angle if the Z-axis has yawed
-  Gyro_roll -= Gyro_pitch * sin(Gyro_z * Sensor_to_rad);            // Transfer the pitch angle to the roll angle if the Z-axis has yawed
-
-  // ----- Accelerometer angle calculations
-  Accel_total_vector = sqrt((Accel_x * Accel_x) + (Accel_y * Accel_y) + (Accel_z * Accel_z));   // Calculate the total (3D) vector
-  Accel_pitch = asin((float)Accel_x / Accel_total_vector) * RAD_TO_DEG;                         //Calculate the pitch angle
-  Accel_roll = asin((float)Accel_y / Accel_total_vector) * RAD_TO_DEG;                          //Calculate the roll angle
-
-  // ----- Zero any residual accelerometer readings
-  /*
-     Place the accelerometer on a level surface
-     Adjust the following two values until the pitch and roll readings are zero
-  */
-  Accel_pitch -= -0.2f;                                             //Accelerometer calibration value for pitch
-  Accel_roll -= 1.1f;                                               //Accelerometer calibration value for roll
-
-  // ----- Correct for any gyro drift
-  if (Gyro_synchronised)
-  {
-    // ----- Gyro & accel have been synchronised
-    Gyro_pitch = Gyro_pitch * 0.9996 + Accel_pitch * 0.0004;        //Correct the drift of the gyro pitch angle with the accelerometer pitch angle
-    Gyro_roll = Gyro_roll * 0.9996 + Accel_roll * 0.0004;           //Correct the drift of the gyro roll angle with the accelerometer roll angle
-  }
-  else
-  {
-    // ----- Synchronise gyro & accel
-    Gyro_pitch = Accel_pitch;                                       //Set the gyro pitch angle equal to the accelerometer pitch angle
-    Gyro_roll = Accel_roll;                                         //Set the gyro roll angle equal to the accelerometer roll angle
-    Gyro_synchronised = true;                                             //Set the IMU started flag
-  }
-
-  // ----- Dampen the pitch and roll angles
-  Gyro_pitch_output = Gyro_pitch_output * 0.9 + Gyro_pitch * 0.1;   //Take 90% of the output pitch value and add 10% of the raw pitch value
-  Gyro_roll_output = Gyro_roll_output * 0.9 + Gyro_roll * 0.1;      //Take 90% of the output roll value and add 10% of the raw roll value
-
-  ////////////////////////////////////////////
-  //        MAGNETOMETER CALCULATIONS       //
-  ////////////////////////////////////////////
-  /*
-     --------------------------------
-     Instructions for first time use
-     --------------------------------
-     Calibrate the compass for Hard-iron and Soft-iron
-     distortion by temporarily setting the header to read
-     bool    Record_data = true;
-
-     Turn on your Serial Monitor before uploading the code.
-
-     Slowly tumble the compass in all directions until a
-     set of readings appears in the Serial Monitor.
-
-     Copy these values into the appropriate header locations.
-
-     Edit the header to read
-     bool    Record_data = false;
-
-     Upload the above code changes to your Arduino.
-
-     This step only needs to be done occasionally as the
-     values are reasonably stable.
-  */
-
-  // ----- Read the magnetometer
-  read_magnetometer();
-
-  // ----- Fix the pitch, roll, & signs
-  /*
-     MPU-9250 gyro and AK8963 magnetometer XY axes are orientated 90 degrees to each other
-     which means that Mag_pitch equates to the Gyro_roll and Mag_roll equates to the Gryro_pitch
-
-     The MPU-9520 and AK8963 Z axes point in opposite directions
-     which means that the sign for Mag_pitch must be negative to compensate.
-  */
-  Mag_pitch = -Gyro_roll_output * DEG_TO_RAD;
-  Mag_roll = Gyro_pitch_output * DEG_TO_RAD;
-
-  // ----- Apply the standard tilt formulas
-  Mag_x_hor = Mag_x * cos(Mag_pitch) + Mag_y * sin(Mag_roll) * sin(Mag_pitch) - Mag_z * cos(Mag_roll) * sin(Mag_pitch);
-  Mag_y_hor = Mag_y * cos(Mag_roll) + Mag_z * sin(Mag_roll);
-
-  // ----- Dampen any data fluctuations
-  Mag_x_dampened = Mag_x_dampened * 0.9 + Mag_x_hor * 0.1;
-  Mag_y_dampened = Mag_y_dampened * 0.9 + Mag_y_hor * 0.1;
-
-  // ----- Calculate the heading
-  Heading = atan2(Mag_x_dampened, Mag_y_dampened) * RAD_TO_DEG;  // Magnetic North
-
-  /*
-     By convention, declination is positive when magnetic north
-     is east of true north, and negative when it is to the west.
-  */
-  Declination = config.declAngleRad * RAD_TO_DEG;
-  Heading += Declination;               // Geographic North
-  if (Heading > 360.0) Heading -= 360.0;
-  if (Heading < 0.0) Heading += 360.0;
-
-  // ----- Allow for under/overflow
-  if (Heading < 0) Heading += 360;
-  if (Heading >= 360) Heading -= 360;
-
-  // ----- Loop control
-  /*
-     Adjust the loop count for a yaw reading of 360 degrees
-     when the MPU-9250 is rotated exactly 360 degrees.
-     (Compensates for any 16 MHz Xtal oscillator error)
-  */
-
-  // while ((micros() - Loop_start_time) < 8000);
-  // Loop_start_time = micros();
-  return Heading;
-}
-
-float getCompassHeading(){
-  float sum = 0.0;
-  xyzFloat gValue = myMPU9250.getGValues();
-  xyzFloat gyr = myMPU9250.getGyrValues();
-  xyzFloat magValue = myMPU9250.getMagValues();
-  float temp = myMPU9250.getTemperature();
-  float resultantG = myMPU9250.getResultantG(gValue);
-  previous_compassheading = compassheading;
-  // Calculate heading
-  float heading = atan2(magValue.y, magValue.x);
-  headingraw = heading;
-  //float heading = atan2(event.magnetic.y, event.magnetic.x);
-  float declinationAngle = config.declAngleRad;
-  heading += declinationAngle;
+  // ax = IMU.getAccelX_mss();
+  // ay = IMU.getAccelY_mss();
+  // az = IMU.getAccelZ_mss();
+  // gx = IMU.getGyroX_rads();
+  // gy = IMU.getGyroY_rads();
+  // gz = IMU.getGyroZ_rads();
+  // mx = IMU.getMagX_uT();
+  // my = IMU.getMagY_uT();
+  // mz = IMU.getMagZ_uT();
+  // temp = IMU.getTemperature_C();
+  deltat = fusion.deltatUpdate();
+  //fusion.MahonyUpdate(gx, gy, gz, ax, ay, az, mx, my, mz, deltat);  //mahony is suggested if there isn't the mag
+  //fusion.MadgwickUpdate(gx, gy, gz, ax, ay, az, mx, my, mz, deltat);  //else use the magwick
   
-  // Correct for heading < 0deg and heading > 360deg
-  if (heading < 0){
-    heading += 2.0 * PI;
-  }
-
-  if (heading > 2.0 * PI){
-    heading -= 2.0 * PI;
-  }
-  // Convert to degrees
-  float headingDegrees = heading * 180.0/M_PI;
-  if(caldata.compassOffset >= 0){
-    if(headingDegrees < caldata.compassOffset){
-      headingDegrees = headingDegrees - caldata.compassOffset + 360.0;
-    }else{
-      headingDegrees = headingDegrees - caldata.compassOffset;
-    }
-  }else{
-      headingDegrees = headingDegrees + (-1.0 * caldata.compassOffset);
-      if(headingDegrees >= 360)
-      {
-          headingDegrees = headingDegrees - 360;
-      }
-  }
-  return headingDegrees;
+  
+  double x = magnetometerData.magnetic.x;
+  Serial.println(x);
+  //roll = fusion.getRoll();
+  // = fusion.getPitch();
+  // = fusion.getYaw();
+  //return yaw;
+  return headingVel;
 }
+
+// float getCompassHeading(){
+//   float sum = 0.0;
+//   xyzFloat gValue = myMPU6500.getGValues();
+//   xyzFloat gyr = myMPU6500.getGyrValues();
+//   xyzFloat magValue = myMPU6500.getMagValues();
+//   float temp = myMPU6500.getTemperature();
+//   float resultantG = myMPU6500.getResultantG(gValue);
+//   previous_compassheading = compassheading;
+//   // Calculate heading
+//   float heading = atan2(magValue.y, magValue.x);
+//   headingraw = heading;
+//   //float heading = atan2(event.magnetic.y, event.magnetic.x);
+//   float declinationAngle = config.declAngleRad;
+//   heading += declinationAngle;
+  
+//   // Correct for heading < 0deg and heading > 360deg
+//   if (heading < 0){
+//     heading += 2.0 * PI;
+//   }
+
+//   if (heading > 2.0 * PI){
+//     heading -= 2.0 * PI;
+//   }
+//   // Convert to degrees
+//   float headingDegrees = heading * 180.0/M_PI;
+//   if(caldata.compassOffset >= 0){
+//     if(headingDegrees < caldata.compassOffset){
+//       headingDegrees = headingDegrees - caldata.compassOffset + 360.0;
+//     }else{
+//       headingDegrees = headingDegrees - caldata.compassOffset;
+//     }
+//   }else{
+//       headingDegrees = headingDegrees + (-1.0 * caldata.compassOffset);
+//       if(headingDegrees >= 360)
+//       {
+//           headingDegrees = headingDegrees - 360;
+//       }
+//   }
+//   return headingDegrees;
+// }
 
 unsigned long distance2waypoint(float waypoint_latt, float waypoint_long){ 
   unsigned long distanceToWaypoint = (unsigned long)TinyGPSPlus::distanceBetween(sensorData.ownLat,sensorData.ownLon,waypoint_latt,waypoint_long);
@@ -1763,6 +1316,29 @@ float CalcRelHeading(float compforheading,float coarseforWaypoint){
 //     GPSFixAccepted = 0;     
 //   }
 // }
+
+void wireScan(){
+
+  byte error, address;
+  int nDevices = 0;
+  Wire.begin();
+  delay(5000);
+  Serial.println("Scanning for I2C devices ...");
+  for(address = 0x01; address < 0x7f; address++){
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    if (error == 0){
+      Serial.printf("I2C device found at address 0x%02X\n", address);
+
+      nDevices++;
+    } else if(error != 2){
+      Serial.printf("Error %d at address 0x%02X\n", error, address);
+    }
+  }
+  if (nDevices == 0){
+    Serial.println("No I2C devices found");
+  }
+}
 
 void updateSensorData(){
   if (millis() > 5000 && gps.charsProcessed() < 10){
@@ -2002,87 +1578,111 @@ if (bEnable){
   }
 }
 
-void switchLedUp(int led,int speed, bool color){
-  if(color){
-    digitalWrite(LEDCOMMON,HIGH);
+void switchLed(int led, int speed, int color, int intensity){
+  int pwm = ledcRead(led);
+  int pwm_target = intensity;
+  int pwm_common = ledcRead(pwmledcommon);  
+  if(color == 1){
+    pwm_target = pwm_target - intensityOffsetGreen;
+    ledcWrite(pwmledcommon, 0);
+    ledcWrite(pwmled0, 0);
+    ledcWrite(pwmled1, 0);
+    ledcWrite(pwmled2, 0);
+    ledcWrite(pwmled3, 0);
+    ledcWrite(pwmled4, 0);
+    ledcWrite(pwmled5, 0);
+    ledcWrite(pwmled6, 0);
+    ledcWrite(pwmled7, 0);
+  }else if (color == 2){
+    pwm_target = ~intensity;
+    pwm_target = pwm_target + 255;
+    Serial.println(pwm_target);
+    ledcWrite(pwmledcommon, 255);
+    ledcWrite(pwmled0, 255);
+    ledcWrite(pwmled1, 255);
+    ledcWrite(pwmled2, 255);
+    ledcWrite(pwmled3, 255);
+    ledcWrite(pwmled4, 255);
+    ledcWrite(pwmled5, 255);
+    ledcWrite(pwmled6, 255);
+    ledcWrite(pwmled7, 255);
   }else{
-    digitalWrite(LEDCOMMON,LOW);
-  }
-  int pwm = 0;
-  int pwm_target = 255;
 
-  while (pwm < pwm_target){
-      switch(led){
-        case 0: 
-          ledcWrite(pwmled0, pwm);
-          break;
-        case 1: 
-          ledcWrite(pwmled1, pwm);
-          break;
-        case 2: 
-          ledcWrite(pwmled2, pwm);
-          break;
-        case 3: 
-          ledcWrite(pwmled3, pwm);
-          break;
-        case 4: 
-          ledcWrite(pwmled4, pwm);
-          break;
-        case 5: 
-          ledcWrite(pwmled5, pwm);
-          break;
-        case 6: 
-          ledcWrite(pwmled6, pwm);
-          break;
-        case 7: 
-          ledcWrite(pwmled7, pwm);
-          break;             
-      }
-      delay(speed);
-      pwm++;
-     }  
   }
 
-void switchLedDown(int led,int speed, bool color){
-  if(color){
-    digitalWrite(LEDCOMMON,HIGH);
-  }else{
-    digitalWrite(LEDCOMMON,LOW);
-  }
-  int pwm = 255;
-  int pwm_target = 0;
-  while (pwm_target < pwm){
-      switch(led){
-        case 0: 
-          ledcWrite(pwmled0, pwm);
-          break;
-        case 1: 
-          ledcWrite(pwmled1, pwm);
-          break;
-        case 2: 
-          ledcWrite(pwmled2, pwm);
-          break;
-        case 3: 
-          ledcWrite(pwmled3, pwm);
-          break;
-        case 4: 
-          ledcWrite(pwmled4, pwm);
-          break;
-        case 5: 
-          ledcWrite(pwmled5, pwm);
-          break;
-        case 6: 
-          ledcWrite(pwmled6, pwm);
-          break;
-        case 7: 
-          ledcWrite(pwmled7, pwm);
-          break;             
+  while (pwm != pwm_target){
+    switch(led){
+      case 0: 
+        ledcWrite(pwmled0, pwm);
+        break;
+      case 1: 
+        ledcWrite(pwmled1, pwm);
+        break;
+      case 2: 
+        ledcWrite(pwmled2, pwm);
+        break;
+      case 3: 
+        ledcWrite(pwmled3, pwm);
+        break;
+      case 4: 
+        ledcWrite(pwmled4, pwm);
+        break;
+      case 5: 
+        ledcWrite(pwmled5, pwm);
+        break;
+      case 6: 
+        ledcWrite(pwmled6, pwm);
+        break;
+      case 7: 
+        ledcWrite(pwmled7, pwm);
+        break;             
+    }
+    if(color == 1){
+      if(pwm_target > pwm){
+        pwm++;
+      }else{
+        pwm--;
       }
-      delay(speed);
-      pwm--;
-     }  
+    }else if(color == 2){
+      if(pwm > pwm_target){
+        pwm--;
+      }else{
+        pwm++;
+      }       
+    }else{
+
+    }
+    delay(speed);
   }  
+}
 
+void ledTesting(){
+  switchLed(0,5,1,254);           // switch led0 on with 5 ms delay between steps, green, full intensity 
+  switchLed(0,5,1,0);
+
+  switchLed(6,5,2,254);           // switch led6 on with 5 ms delay between steps, green, full intensity 
+  delay(2000);
+  switchLed(6,5,2,0);
+
+  switchLed(3,2,1,254);           // switch led3 on with 2 ms delay between steps, green, full intensity 
+//  Serial.println("1");
+  // for(i = 0; i < 8; i++){
+  //   switchLedUp(i,5,1,255);
+  // }
+  // Serial.println("2");
+  // for(i = 0; i < 8; i++){
+  //   switchLedDown(i,5,1,0);
+  // }
+  // Serial.println("3");
+  // for(i = 0; i < 8; i++){
+  //   switchLedUp(i,5,2,255);
+  // }
+  // Serial.println("4");
+  // for(i = 0; i < 8; i++){
+  //   switchLedDown(i,5,2,0);
+  // } 
+   // switchLed(3,2,1,0);   
+};
 // Replaces placeholder with value for webserver
 String processor(const String& var){
   if(var == "JSFILE"){
@@ -2485,7 +2085,7 @@ void timerSetup(){
 // timer0 setup
   timer0 = timerBegin(0, 80, true);
   timerAttachInterrupt(timer0, &onTimer0, true);
-  timerAlarmWrite(timer0, (config.gpsPollSec * 1000000), true);           // 1000 ms
+  timerAlarmWrite(timer0, (config.gpsPollSec * 1000000), true);         // 1 s
 // timer1 setup
   timer1 = timerBegin(1, 80, true);
   timerAttachInterrupt(timer1, &onTimer1, true);
@@ -2493,7 +2093,7 @@ void timerSetup(){
 // timer2 setup
   timer2 = timerBegin(2, 80, true);
   timerAttachInterrupt(timer2, &onTimer2, true);
-  timerAlarmWrite(timer2, (config.sleepMins * 60000000), true);            // 1 min
+  timerAlarmWrite(timer2, (config.sleepMins * 60000000), true);         // 1 min
 
   timerAlarmEnable(timer0);
   timerAlarmEnable(timer1);
@@ -2515,6 +2115,7 @@ void PWMSetup(){
   // ledcAttachPin(hapticrear, pwmhapticrear);
   // ledcAttachPin(hapticleft, pwmhapticleft);
 
+  ledcSetup(pwmledcommon, hapticfreq, resolution);
   ledcSetup(pwmled0, hapticfreq, resolution);
   ledcSetup(pwmled1, hapticfreq, resolution);
   ledcSetup(pwmled2, hapticfreq, resolution);
@@ -2523,6 +2124,7 @@ void PWMSetup(){
   ledcSetup(pwmled5, hapticfreq, resolution);
   ledcSetup(pwmled6, hapticfreq, resolution);
   ledcSetup(pwmled7, hapticfreq, resolution);
+  ledcAttachPin(ledcommon, pwmledcommon);
   ledcAttachPin(led0, pwmled0);
   ledcAttachPin(led1, pwmled1);
   ledcAttachPin(led2, pwmled2);
@@ -2580,70 +2182,14 @@ if (asAP) {
 hostAddress = "http://" + ipAddress;
 }
 
-void tiltCompensatedCompassSetup(){
-    // ----- Serial communication
-  Wire.begin();                                         //Start I2C as master
-  Wire.setClock(400000);
-  // ----- Provision to disable tilt stabilization
-  /*
-     Connect a jumper wire between A0 and GRN to disable the "tilt stabilazation"
-  */
-
-
-  // ----- Status LED
- // pinMode(LED, OUTPUT);                                 // Set LED (pin 13) as output
-  // digitalWrite(LED, LOW);                               // Turn LED off
-
-  // ----- Configure the magnetometer
-  configure_magnetometer();
-
-  // ----- Calibrate the magnetometer
-  /*
-     Calibrate only needs to be done occasionally.
-     Enter the magnetometer values into the "header"
-     then set "Record_data = false".
-  */
-  if (caldata.calibrateMag == true)
-  {
-    calibrate_magnetometer();
-  }
-
-  // ----- Configure the gyro & magnetometer
-  config_gyro();
-
-  calibrate_gyro();
-
-  Debug_start_time = micros();                          // Controls data display rate to Serial Monitor
-  Loop_start_time = micros();                           // Controls the Gyro refresh rate
-}
-
 void magnometerSetup(){
-  Serial.println("");
-  byte whoAmICode = 0x00;
-  Wire.begin();
-  if(!myMPU9250.init()){
-    Serial.println("MPU9250 does not respond");
-  }
-  else{
-    Serial.println("MPU9250 is connected");
+  // start communication with IMU 
+  if (!bno.begin())
+  {
+    Serial.print("No BNO055 detected");
+    while (1);
   }
 
-  if(!myMPU9250.initMagnetometer()){
-    Serial.println("Magnetometer does not respond");
-  }
-  else{
-    Serial.println("Magnetometer is connected");
-  }
-
-  myMPU9250.autoOffsets();
-  myMPU9250.enableGyrDLPF();
-  myMPU9250.setGyrDLPF(MPU9250_DLPF_6);  // lowest noise
-  myMPU9250.setSampleRateDivider(5);
-  myMPU9250.setGyrRange(MPU9250_GYRO_RANGE_250);
-  myMPU9250.setAccRange(MPU9250_ACC_RANGE_2G);
-  myMPU9250.enableAccDLPF(true);
-  myMPU9250.setAccDLPF(MPU9250_DLPF_6);
-  myMPU9250.setMagOpMode(AK8963_CONT_MODE_100HZ);
 }
 
 void ioSetup(){
@@ -2721,6 +2267,7 @@ void setup(){
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
   //tiltCompensatedCompassSetup();
+  wireScan();
   magnometerSetup();
   getInitialReadings();
 
@@ -2782,23 +2329,6 @@ void loop(){
       }                 
     }
 
-
-  for(i = 0; i < 8; i++){
-    switchLedUp(i,5,false);
-  }
-
-  for(i = 0; i < 8; i++){
-    switchLedDown(i,5,false);
-  }
-
-  for(i = 0; i < 8; i++){
-    switchLedUp(i,5,true);
-  }
-
-  for(i = 0; i < 8; i++){
-    switchLedDown(i,5,true);
-  } 
-
     // if(interrupt2){
     //   portENTER_CRITICAL(&timer2Mux);
     //   interrupt2--;
@@ -2810,5 +2340,7 @@ void loop(){
     //   interrupt2 = 0;
     //   esp_deep_sleep_start();          
     // }
+
+    //ledTesting();
   }
 }
