@@ -88,8 +88,8 @@ struct Config {
   uint8_t http_port = 80;
   uint8_t dns_port = 53;
   bool asAP = false;
-  char clientSSID[25] = "TrizNet_AP";
-  char clientPasswd[16] = "S4pphi099#";
+  char clientSSID[25] = "Get_out_of_my_laboratory";
+  char clientPasswd[16] = "T0sh7b49";
   int connectionTimeOut = 120;
   char deviceName[16] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
   char apPasswd[16] = "prutser00";
@@ -2142,7 +2142,7 @@ void wifiSetup(){
     const char *ssid = "testAP";
     const char *password = "yourPassword";
 
-    Serial.println("Setting up WiFi in AP Mode: ");
+    Serial.println("Setting up WiFi in AP Mode! ");
     Serial.println(config.deviceName);
     Serial.println(config.apPasswd);
 
