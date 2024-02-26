@@ -1,5 +1,5 @@
 {
-    "asAP": false,
+    "asAP": true,
     "clientSSID": "TrizNet_AP",
     "clientPasswd": "S4pphi099#",
     "connectionTimeOut": 120,

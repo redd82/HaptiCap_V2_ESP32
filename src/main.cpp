@@ -1,6 +1,8 @@
 #include <Arduino.h>
 
-#include "WiFi.h"
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiAP.h>
 #include "ESPAsyncWebServer.h"
 #include <DNSServer.h>
 #include "FS.h"
@@ -72,10 +74,10 @@ float deltat;
 // float   Mag_x_scale = 1.01,     Mag_y_scale = 0.99,     Mag_z_scale = 1.00;    // Soft-iron scale factors
 // float   ASAX = 1.17,            ASAY = 1.18,            ASAZ = 1.14;           // (A)sahi (S)ensitivity (A)djustment fuse ROM values.
 
-void setup();
-void setupIO();
-void webServerFunctions();
-void loop();
+// void setup();
+// void setupIO();
+// void webServerFunctions();
+// void loop();
 
 // Set declination angle on your location and fix heading
 // Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
@@ -358,7 +360,7 @@ bool bDebugTgrtReached = 0;
 bool bDebugHomeReached = 0;
 int GPSFix = 0;
 bool GPSFixAccepted = 0;
-bool asAP = false;
+bool asAP = true;
 bool startup = false;
 bool enableLed0;
 bool enableLed1;
@@ -1213,7 +1215,7 @@ double getCompassHeading(){
   
   
   double x = magnetometerData.magnetic.x;
-  Serial.println(x);
+ // Serial.println(x);
   //roll = fusion.getRoll();
   // = fusion.getPitch();
   // = fusion.getYaw();
@@ -2136,48 +2138,63 @@ void PWMSetup(){
 }
 
 void wifiSetup(){
-delay(500);
+  if (config.asAP) {
+    const char *ssid = "testAP";
+    const char *password = "yourPassword";
 
-if (asAP) {
-  delay(1000);
-  WiFi.mode( WIFI_MODE_APSTA );
-  IPAddress ip( 192, 168, 1, 1 );
-  IPAddress gateway( 192, 168, 1, 1 );
-  IPAddress subnet( 255, 255, 255, 0 );
-  WiFi.softAP(config.deviceName,config.apPasswd);
-  delay(2000);
-  WiFi.softAPConfig( ip, gateway, subnet );
-  Serial.print("Setting HaptiCap up as AP: ");
-  Serial.println(config.deviceName);
-  Serial.println(config.apPasswd);      
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-  ipAddress = IP.toString();
-}else{
-  Serial.print("Setting HapiCap as client to network ");
-  Serial.print(config.clientSSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(config.clientSSID, config.clientPasswd);
-  intCounterWifi = 0;
-    
-  while (WiFi.status() != WL_CONNECTED){
-    delay(500);
-    Serial.print(".");
-    intCounterWifi++;
-      if (intCounterWifi > 120){
-        Serial.println("");
-        config.asAP = 1;
-        saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
-        delay(1000);
-        ESP.restart();          
+    Serial.println("Setting up WiFi in AP Mode: ");
+    Serial.println(config.deviceName);
+    Serial.println(config.apPasswd);
+
+  if (!WiFi.softAP(ssid, password)) {
+    log_e("Soft AP creation failed.");
+    while(1);
+  }    
+    // if (!WiFi.softAP(config.deviceName, config.apPasswd)) {
+    //   log_e("Soft AP creation failed.");
+    //   while(1);
+    // }
+    delay(100);
+    WiFi.setAutoReconnect(false);
+    WiFi.softAP(config.deviceName,config.apPasswd, 13, 0, 2);
+    WiFi.setTxPower(WIFI_POWER_15dBm);
+    int txPower = WiFi.getTxPower();
+    Serial.print("TX Power: ");
+    Serial.println(txPower);
+    delay(100);
+    IPAddress ip( 192, 168, 1, 1 );
+    IPAddress gateway( 192, 168, 1, 1 );
+    IPAddress subnet( 255, 255, 255, 0 );
+    delay(2000);
+    WiFi.softAPConfig( ip, gateway, subnet );  
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP);
+    ipAddress = IP.toString();
+  }else{
+    Serial.print("Setting HapiCap as client to network ");
+    Serial.print(config.clientSSID);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(config.clientSSID, config.clientPasswd);
+    intCounterWifi = 0;
+      
+    while (WiFi.status() != WL_CONNECTED){
+      delay(500);
+      Serial.print(".");
+      intCounterWifi++;
+        if (intCounterWifi > 120){
+          Serial.println("");
+          config.asAP = 1;
+          saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
+          delay(1000);
+          ESP.restart();          
+        }
       }
-    }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(config.clientSSID);
-  IPAddress IP = WiFi.localIP();
-  ipAddress = IP.toString();
+    Serial.println("");
+    Serial.print("Connected to ");
+    Serial.println(config.clientSSID);
+    IPAddress IP = WiFi.localIP();
+    ipAddress = IP.toString();
   }
 hostAddress = "http://" + ipAddress;
 }
@@ -2248,39 +2265,50 @@ void testFunction(){
 void setup(){
   Serial.begin(SerialUSBBaud);
   Serial2.begin(GPSBaud);
-
-  littleFSSetup();
-  loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
-  asAP = config.asAP;
-  loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);  
-  
   Serial.println();
   Serial.print("HaptiCap version: ");
   Serial.println(SWVERSION);
   Serial.println("By Chrysnet.com and Triznet.com");
 
+    const char *ssid = "testAP";
+    const char *password = "yourPassword";
+
+    Serial.println("Setting up WiFi in AP Mode: ");
+    Serial.println(config.deviceName);
+    Serial.println(config.apPasswd);
+
+  if (!WiFi.softAP(ssid, password)) {
+    log_e("Soft AP creation failed.");
+    while(1);
+  }   
+
+
+
+  littleFSSetup();
+  loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+  loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
+  //wifiSetup();
   touchPadSetup();
   ioSetup();
   timerSetup();
   PWMSetup();
-  wifiSetup();
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
   //tiltCompensatedCompassSetup();
   wireScan();
   magnometerSetup();
   getInitialReadings();
-
+  delay(10000);
   if(!asAP){
     Serial.print("IP address: ");
     Serial.println(ipAddress);
     Serial.print("Host address: ");
     Serial.println(hostAddress);
     }else{
-      dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-      dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
-      Serial.print("DNS Started on port.");
-      Serial.println(config.dns_port);
+      //dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+      //dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
+      //Serial.print("DNS Started on port.");
+      //Serial.println(config.dns_port);
       Serial.print("IP address: ");
       Serial.println(ipAddress);
       Serial.print("Host address: ");

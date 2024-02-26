@@ -1,0 +1,4 @@
+# Name,   Type, SubType,  Offset,   Size,  Flags
+ota_0,     app, ota_0,   0x10000,  0x1A0000,
+otadata,  data, ota,    0x1B0000,  0x2000,
+spiffs,     data, spiffs, 0x1B2000,  0xE3E000,
