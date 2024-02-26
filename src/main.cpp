@@ -2137,14 +2137,36 @@ void PWMSetup(){
   ledcAttachPin(led7, pwmled7);  
 }
 
+String get_wifi_status(int status){
+    switch(status){
+        case WL_IDLE_STATUS:
+        return "WL_IDLE_STATUS";
+        case WL_SCAN_COMPLETED:
+        return "WL_SCAN_COMPLETED";
+        case WL_NO_SSID_AVAIL:
+        return "WL_NO_SSID_AVAIL";
+        case WL_CONNECT_FAILED:
+        return "WL_CONNECT_FAILED";
+        case WL_CONNECTION_LOST:
+        return "WL_CONNECTION_LOST";
+        case WL_CONNECTED:
+        return "WL_CONNECTED";
+        case WL_DISCONNECTED:
+        return "WL_DISCONNECTED";
+    }
+}
+
 void wifiSetup(){
+  int status = WL_IDLE_STATUS;
   if (config.asAP) {
     const char *ssid = "testAP";
     const char *password = "yourPassword";
-
+    WiFi.mode(WIFI_MODE_APSTA);
     Serial.println("Setting up WiFi in AP Mode! ");
     Serial.println(config.deviceName);
     Serial.println(config.apPasswd);
+    Serial.println(get_wifi_status(status));
+    WiFi.softAP(config.deviceName, config.apPasswd);
 
   if (!WiFi.softAP(ssid, password)) {
     log_e("Soft AP creation failed.");
@@ -2173,14 +2195,16 @@ void wifiSetup(){
     ipAddress = IP.toString();
   }else{
     Serial.print("Setting HapiCap as client to network ");
-    Serial.print(config.clientSSID);
-    WiFi.mode(WIFI_STA);
+    Serial.println(get_wifi_status(status));
+    Serial.println(config.clientSSID);
+    //WiFi.mode(WIFI_STA);
     WiFi.begin(config.clientSSID, config.clientPasswd);
     intCounterWifi = 0;
       
     while (WiFi.status() != WL_CONNECTED){
+      Serial.println(get_wifi_status(status));
       delay(500);
-      Serial.print(".");
+      //Serial.print(".");
       intCounterWifi++;
         if (intCounterWifi > 120){
           Serial.println("");
@@ -2270,24 +2294,10 @@ void setup(){
   Serial.println(SWVERSION);
   Serial.println("By Chrysnet.com and Triznet.com");
 
-    const char *ssid = "testAP";
-    const char *password = "yourPassword";
-
-    Serial.println("Setting up WiFi in AP Mode: ");
-    Serial.println(config.deviceName);
-    Serial.println(config.apPasswd);
-
-  if (!WiFi.softAP(ssid, password)) {
-    log_e("Soft AP creation failed.");
-    while(1);
-  }   
-
-
-
   littleFSSetup();
   loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
   loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
-  //wifiSetup();
+  wifiSetup();
   touchPadSetup();
   ioSetup();
   timerSetup();
@@ -2296,8 +2306,8 @@ void setup(){
   delay(1000);
   //tiltCompensatedCompassSetup();
   wireScan();
-  magnometerSetup();
-  getInitialReadings();
+  //magnometerSetup();
+  //getInitialReadings();
   delay(10000);
   if(!asAP){
     Serial.print("IP address: ");
@@ -2319,7 +2329,7 @@ void setup(){
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
   haptiCapReady();
-  testFunction();
+  //testFunction();
 }
 
 void loop(){
@@ -2343,14 +2353,14 @@ void loop(){
       portENTER_CRITICAL(&timer0Mux);
       interrupt0--;    
       portEXIT_CRITICAL(&timer0Mux);
-        updateSensorData();
+        //updateSensorData();
       }
 
     if(interrupt1 > 0){
       portENTER_CRITICAL(&timer1Mux);
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
-      sensorData.compassHeading = getCompassHeading();
+      //sensorData.compassHeading = getCompassHeading();
       //sensorData.compassHeading = getTiltCompensatedHeading();
       if(interrupt1 > 10){
         interrupt1 = 2;
