@@ -2307,7 +2307,7 @@ void setup(){
   //tiltCompensatedCompassSetup();
   wireScan();
   //magnometerSetup();
-  //getInitialReadings();
+  getInitialReadings();
   delay(10000);
   if(!asAP){
     Serial.print("IP address: ");
@@ -2337,9 +2337,9 @@ void loop(){
     smartDelay(50);
   }else{
  
-    if(asAP){  
-      dnsServer.processNextRequest();
-    }
+    // if(asAP){  
+    //   dnsServer.processNextRequest();
+    // }
 
   // Start of main code.
     if(timers_disabled){
@@ -2353,7 +2353,7 @@ void loop(){
       portENTER_CRITICAL(&timer0Mux);
       interrupt0--;    
       portEXIT_CRITICAL(&timer0Mux);
-        //updateSensorData();
+        updateSensorData();
       }
 
     if(interrupt1 > 0){
