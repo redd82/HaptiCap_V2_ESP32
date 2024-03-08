@@ -1954,7 +1954,8 @@ void webServerSetup(){
 
   webServer.on("/listFiles", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-      String fileListing = listDir(LittleFS, "/", 2);
+      //String fileListing = listDir(LittleFS, "/", 2);
+      String fileListing = listDir(LittleFS, mapsDir.c_str(), 0);
       request->send(200, "application/json", "{ \"listing\": " + fileListing + "}");
     }
   );
