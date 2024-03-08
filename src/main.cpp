@@ -15,8 +15,8 @@
 #include <Adafruit_BNO055.h>
 
 #include "SensorFusion.h" //SF
+
 #include <string>
-#include "functions.h"
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 #define SWVERSION 2.01
@@ -74,16 +74,12 @@ float deltat;
 // float   Mag_x_scale = 1.01,     Mag_y_scale = 0.99,     Mag_z_scale = 1.00;    // Soft-iron scale factors
 // float   ASAX = 1.17,            ASAY = 1.18,            ASAZ = 1.14;           // (A)sahi (S)ensitivity (A)djustment fuse ROM values.
 
-// void setup();
-// void setupIO();
-// void webServerFunctions();
-// void loop();
-
 // Set declination angle on your location and fix heading
 // Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
 //float declinationAngle = (declAngleDeg + (declAngleMin / 60.0)) / (180.0 / PI);
 // _Config_
 
+// refactoring main.cpp 
 struct Config {
   uint8_t http_port = 80;
   uint8_t dns_port = 53;
@@ -192,15 +188,15 @@ struct SelectedMap {
   int radius = 63713000;
 };
 
-StaticJsonDocument<CONFIG_JSON_DOCSIZE> configDoc;
-StaticJsonDocument<CALDATA_JSON_DOCSIZE> calDataDoc;
-StaticJsonDocument<DEBUGSETTINGS_JSON_DOCSIZE> debugSettingsDoc;
-StaticJsonDocument<SENSORDATA_JSON_DOCSIZE> sensorDataDoc;
-StaticJsonDocument <MAPLIST_JSON_DOCSIZE> mapListDoc;
-StaticJsonDocument <MAPRECIEVED_JSON_DOCSIZE> selectedMapJSON;
-StaticJsonDocument <WAYPOINTS_JSON_DOCSIZE> waypointsMapsDoc;
-JsonArray maps = mapListDoc.createNestedArray("maps");
-JsonArray mapWaypoints = waypointsMapsDoc.createNestedArray("mapWaypoints");
+JsonDocument configDoc;
+JsonDocument calDataDoc;
+JsonDocument debugSettingsDoc;
+JsonDocument sensorDataDoc;
+JsonDocument mapListDoc;
+JsonDocument selectedMapJSON;
+JsonDocument waypointsMapsDoc;
+JsonArray maps = mapListDoc["maps"].to<JsonArray>();
+JsonArray mapWaypoints = waypointsMapsDoc["mapWaypoints"].to<JsonArray>();
 
 Config config;                         // <- global configuration object
 CalData caldata;
@@ -2154,10 +2150,10 @@ String get_wifi_status(int status){
         case WL_DISCONNECTED:
         return "WL_DISCONNECTED";
     }
+    return "UNKNOWN_STATUS";
 }
 
 void wifiSetup(){
-  int status = WL_IDLE_STATUS;
   if (config.asAP) {
     const char *ssid = "testAP";
     const char *password = "yourPassword";
@@ -2165,7 +2161,6 @@ void wifiSetup(){
     Serial.println("Setting up WiFi in AP Mode! ");
     Serial.println(config.deviceName);
     Serial.println(config.apPasswd);
-    Serial.println(get_wifi_status(status));
     WiFi.softAP(config.deviceName, config.apPasswd);
 
   if (!WiFi.softAP(ssid, password)) {
@@ -2195,14 +2190,12 @@ void wifiSetup(){
     ipAddress = IP.toString();
   }else{
     Serial.print("Setting HapiCap as client to network ");
-    Serial.println(get_wifi_status(status));
     Serial.println(config.clientSSID);
     //WiFi.mode(WIFI_STA);
     WiFi.begin(config.clientSSID, config.clientPasswd);
     intCounterWifi = 0;
       
     while (WiFi.status() != WL_CONNECTED){
-      Serial.println(get_wifi_status(status));
       delay(500);
       //Serial.print(".");
       intCounterWifi++;
@@ -2328,6 +2321,7 @@ void setup(){
   webServerSetup();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
+  getInitialReadings();
   haptiCapReady();
   //testFunction();
 }
