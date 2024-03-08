@@ -4,6 +4,7 @@
 #include <WiFiClient.h>
 #include <WiFiAP.h>
 #include "ESPAsyncWebServer.h"
+#include <ElegantOTA.h>
 #include <DNSServer.h>
 #include "FS.h"
 #include <LittleFS.h>
@@ -228,6 +229,7 @@ int mapSelector = 1;
 static const uint32_t GPSBaud = 9600;
 static const uint32_t SerialUSBBaud = 115200;
 static int taskCore = 0;
+unsigned long ota_progress_millis = 0;
 
 // _Interrupts_
 volatile int interrupt0;
@@ -510,6 +512,7 @@ void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels){
         file = root.openNextFile();
     }
     cssJsFileNamesConcat = true;
+    printFreeSpace();
 }
 
 void createDir(fs::FS &fs, const char * path){
@@ -1696,6 +1699,30 @@ String processor(const String& var){
   return String();
 }
 
+void onOTAStart() {
+  // Log when OTA has started
+  Serial.println("OTA update started!");
+  // <Add your own code here>
+}
+
+void onOTAProgress(size_t current, size_t final) {
+  // Log every 1 second
+  if (millis() - ota_progress_millis > 1000) {
+    ota_progress_millis = millis();
+    Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
+  }
+}
+
+void onOTAEnd(bool success) {
+  // Log when OTA has finished
+  if (success) {
+    Serial.println("OTA update finished successfully!");
+  } else {
+    Serial.println("There was an error during OTA update!");
+  }
+  // <Add your own code here>
+}
+
 void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t index, uint8_t *data, size_t len, bool final){
   String response = "";
   if (!index) {
@@ -2071,9 +2098,34 @@ void webServerSetup(){
     }
   });
   
+  ElegantOTA.onStart([]() {
+    Serial.println("OTA update process started.");
+    // Add your initialization tasks here.
+  });
+
+  ElegantOTA.onProgress([](size_t current, size_t final) {
+    Serial.printf("Progress: %u%%\n", (current * 100) / final);
+  });
+
+  ElegantOTA.onEnd([](bool success) {
+    if (success) {
+      Serial.println("OTA update completed successfully.");
+      // Add success handling here.
+    } else {
+      Serial.println("OTA update failed.");
+      // Add failure handling here.
+    }
+  });
+
   addWebServerHeaders();
   webServerHandlers();
+
   webServer.begin();
+  ElegantOTA.begin(&webServer);    // Start ElegantOTA
+  // ElegantOTA callbacks
+  ElegantOTA.onStart(onOTAStart);
+  ElegantOTA.onProgress(onOTAProgress);
+  ElegantOTA.onEnd(onOTAEnd);
   Serial.print("HTTP Started on port: ");
   Serial.println(config.http_port);
   delay(1000);
@@ -2322,6 +2374,9 @@ void setup(){
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
   getInitialReadings();
+  ElegantOTA.setAutoReboot(false);
+  ElegantOTA.setAuth(config.deviceName, config.apPasswd);
+  Serial.println("OTA Enabled!");
   haptiCapReady();
   //testFunction();
 }
