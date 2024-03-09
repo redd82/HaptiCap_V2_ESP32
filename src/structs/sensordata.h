@@ -1,4 +1,4 @@
-#include <Arduino.h>
+// File: sensordata.h
 #ifndef SENSORDATA_H
 #define SENDORDATA_H
 

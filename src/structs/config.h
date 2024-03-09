@@ -1,6 +1,7 @@
-#include <Arduino.h>
 #ifndef CONFIG_H
 #define CONFIG_H
+
+#include <Arduino.h>
 
 struct Config {
   uint8_t http_port = 80;
