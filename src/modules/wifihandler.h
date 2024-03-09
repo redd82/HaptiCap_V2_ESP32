@@ -16,4 +16,5 @@ extern int intCounterWifi;
 
 void saveConfiguration(FS &fs, const char * path);
 void wifiSetup();
+
 #endif

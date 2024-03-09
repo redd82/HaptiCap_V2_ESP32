@@ -32,6 +32,14 @@ extern JsonDocument selectedMapJSON;
 // Local variables
 bool cssJsFileNamesConcat = false;
 
+// Prototypes
+extern Config config;
+extern CalData caldata;
+extern DebugSettings debugSettings;
+extern SensorData sensorData;
+extern SelectedMap selectedMap;
+extern WaypointsMap wayPoints;
+
 // file management
 String humanReadableSize(const size_t bytes) {
     if (bytes < 1024) return String(bytes) + " B";

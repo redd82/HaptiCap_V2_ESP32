@@ -5,7 +5,6 @@
 #include <Adafruit_BNO055.h>
 #include "SensorFusion.h"
 
-
 double getCompassHeading();
 
 #endif

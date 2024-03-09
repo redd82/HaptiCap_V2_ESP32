@@ -1,6 +1,6 @@
 // File: sensordata.h
 #ifndef SENSORDATA_H
-#define SENDORDATA_H
+#define SENSORDATA_H
 
 struct SensorData {
   char sensorName[8] = "";

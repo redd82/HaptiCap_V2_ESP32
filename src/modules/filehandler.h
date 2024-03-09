@@ -11,13 +11,6 @@
 #include "../structs/selectedmap.h"
 #include "../structs/waypointsmap.h"
 
-extern Config config;
-extern CalData caldata;
-extern DebugSettings debugSettings;
-extern SensorData sensorData;
-extern SelectedMap selectedMap;
-extern WaypointsMap wayPoints;
-
 void putJSONConfigDataInMemory();
 void putJSONCalibrationDataInMemory();
 void putJSONDebugSettingsInMemory();
@@ -43,4 +36,5 @@ void IRAM_ATTR loadDebugSettings(fs::FS &fs, const char * path, DebugSettings &d
 void IRAM_ATTR loadCalibrationData(fs::FS &fs, const char * path, CalData &caldata);
 void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorData);
 void IRAM_ATTR readAllMapsFromJSON(fs::FS &fs, const char * path);
+
 #endif

@@ -2,8 +2,8 @@
 #define GPS_H
 
 #include <TinyGPSPlus.h>
-#include "../structs/config.h"
 #include "../structs/sensordata.h"
+#include "../structs/config.h"
 
 String getGPSTimeMinsSecs();
 String getGPSTimeMins();

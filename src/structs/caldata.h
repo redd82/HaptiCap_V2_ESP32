@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #ifndef CALDATA_H
 #define CALDATA_H
 

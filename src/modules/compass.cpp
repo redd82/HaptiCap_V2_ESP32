@@ -1,4 +1,3 @@
-
 #include "compass.h"
 
 extern uint16_t BNO055_SAMPLERATE_DELAY_MS;
