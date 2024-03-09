@@ -1,8 +1,5 @@
 #include <Arduino.h>
 
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <WiFiAP.h>
 #include "ESPAsyncWebServer.h"
 #include <ElegantOTA.h>
 #include <DNSServer.h>
@@ -10,14 +7,17 @@
 #include <LittleFS.h>
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
-
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-
 #include "SensorFusion.h" //SF
-
 #include <string>
+
+#include "structs/config.h"
+#include "structs/caldata.h"
+#include "structs/sensordata.h"
+#include "structs/selectedmap.h"
+#include "modules/wifihandler.h"
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 #define SWVERSION 2.01
@@ -81,58 +81,6 @@ float deltat;
 // _Config_
 
 // refactoring main.cpp 
-struct Config {
-  uint8_t http_port = 80;
-  uint8_t dns_port = 53;
-  bool asAP = false;
-  char clientSSID[25] = "Get_out_of_my_laboratory";
-  char clientPasswd[16] = "T0sh7b49";
-  int connectionTimeOut = 120;
-  char deviceName[16] = "HaptiCap";                       //  = "HCR-99_HaptiCap"
-  char apPasswd[16] = "prutser00";
-  char http_username[16] = "admin";
-  char http_password[16] = "admin";
-  unsigned long gpsPollSec = 1;              // Timer0 tick set to 1 s (1 * 1000 = 1000 ms) for gps 
-  unsigned long compPollMs = 100;            // Timer1 tick set to 1 ms (100 * 1 = 100 ms)  for compass 
-  float compOffset = 123.0;
-  float HOME_LAT = 12.234567;
-  float HOME_LON = 56.789012;
-  float WAYPOINT_LAT = 2.234567;
-  float WAYPOINT_LON = 6.789012;
-  int targetReached = 10;
-  int maxDistance = 500;
-  int maxDelay = 1000;
-  double declAngleRad = 0.024085543678;
-  unsigned long sleepMins = 5;                // Timer2 tick set to 1 min (1 * 60000 = 1 min)  sleep
-  int touchThreshold = 50;
-  int timeZoneOffset = 1;                      // +1 hour
-  bool touchEnabled = true;
-  int selectedMap = 1;
-};
-
-// _CalData_
-struct CalData {
-  bool calibrateMag = false;
-  float compassOffset = 0.0;
-  int magBiasX = 0;             // Mag_x_offset = 46,
-  int magBiasY = 0;             // Mag_y_offset = 190,
-  int magBiasZ = 0;             // Mag_z_offset = -254;
-  float magScaleFacX = 1.0;     // Mag_x_scale = 1.01,  
-  float magScaleFacY = 1.0;     // Mag_y_scale = 0.99,
-  float magScaleFacZ = 1.0;     // Mag_z_scale = 1.00;
-  float ASAX = 1.0;             // (A)sahi (S)ensitivity (A)djustment fuse ROM values.
-  float ASAY = 1.0;
-  float ASAZ = 1.0;
-  float gyroBiasX = 0.0;
-  float gyroBiasY = 0.0;
-  float gyroBiasZ = 0.0;
-  float accelBiasX = 0.0;
-  float accelBiasY = 0.0;
-  float accelBiasZ = 0.0;
-  float accelScaleX = 1.0;
-  float accelScaleY = 1.0;
-  float accelScaleZ = 1.0;
-};
 
 struct DebugSettings {
   bool debugHaptic = false;
@@ -140,53 +88,10 @@ struct DebugSettings {
   bool debugGPS2Serial = false;
 };
 
-struct SensorData {
-  char sensorName[8] = "";
-  int gpsTime = 0;
-  double ownLat = 0.0;
-  double ownLon= 0.0;
-  float compassHeading = 0.0;
-  char compassCardinal[8] = "";
-  double homeBaseLat= 0.0;
-  double homeBaseLon= 0.0;
-  float homeBaseBearing= 0.0;
-  char homeBaseCardinal[8] = "";
-  int homeBaseDistance= 0;
-  float relheading = 0.0;
-  float relheadingHomeBase = 0.0;
-  double wayPointLat = 0.0;
-  double wayPointLon = 0.0;
-  float wayPointBearing= 0.0;
-  char wayPointCardinal[8] = "";
-  int wayPointDistance = 0;
-  int nrOfSatellites = 0;
-};
 
 struct WaypointsMap {
   double homeBase[2] = { 0.0 };
   double wayPoint [NROFWAYPOINTS][2];
-};
-
-struct SelectedMap {
-  // id, name, country, area, mapfile, kmlfile
-  int map_id; // 1
-  char map_name[32] = ""; // "Test area"
-  char map_area[32] = ""; // "Kaag en Braassem"
-  char map_country[64] = ""; // "Netherlands"
-  char map_pngFile[32] = ""; // "kaagenbraassem.png"
-  int imageWidth = 0;
-  int imageHeight = 0;
-  char map_kmlFile[16] = ""; // "kaagenbraassem.kml"
-  double realWorldHeight = 0.0;
-  double realWorldWidth = 0.0;
-  float scaleHeight = 1.0;
-  float scaleWidth = 1.0;
-  double north = 0.0;
-  double west = 0.0;
-  double south = 0.0;
-  double east = 0.0;
-  float rotation = 0.0;
-  int radius = 63713000;
 };
 
 JsonDocument configDoc;
@@ -2206,68 +2111,68 @@ String get_wifi_status(int status){
     return "UNKNOWN_STATUS";
 }
 
-void wifiSetup(){
-  if (config.asAP) {
-    const char *ssid = "testAP";
-    const char *password = "yourPassword";
-    WiFi.mode(WIFI_MODE_APSTA);
-    Serial.println("Setting up WiFi in AP Mode! ");
-    Serial.println(config.deviceName);
-    Serial.println(config.apPasswd);
-    WiFi.softAP(config.deviceName, config.apPasswd);
+// void wifiSetup(){
+//   if (config.asAP) {
+//     const char *ssid = "testAP";
+//     const char *password = "yourPassword";
+//     WiFi.mode(WIFI_MODE_APSTA);
+//     Serial.println("Setting up WiFi in AP Mode! ");
+//     Serial.println(config.deviceName);
+//     Serial.println(config.apPasswd);
+//     WiFi.softAP(config.deviceName, config.apPasswd);
 
-  if (!WiFi.softAP(ssid, password)) {
-    log_e("Soft AP creation failed.");
-    while(1);
-  }    
-    // if (!WiFi.softAP(config.deviceName, config.apPasswd)) {
-    //   log_e("Soft AP creation failed.");
-    //   while(1);
-    // }
-    delay(100);
-    WiFi.setAutoReconnect(false);
-    WiFi.softAP(config.deviceName,config.apPasswd, 13, 0, 2);
-    WiFi.setTxPower(WIFI_POWER_15dBm);
-    int txPower = WiFi.getTxPower();
-    Serial.print("TX Power: ");
-    Serial.println(txPower);
-    delay(100);
-    IPAddress ip( 192, 168, 1, 1 );
-    IPAddress gateway( 192, 168, 1, 1 );
-    IPAddress subnet( 255, 255, 255, 0 );
-    delay(2000);
-    WiFi.softAPConfig( ip, gateway, subnet );  
-    IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(IP);
-    ipAddress = IP.toString();
-  }else{
-    Serial.print("Setting HapiCap as client to network ");
-    Serial.println(config.clientSSID);
-    //WiFi.mode(WIFI_STA);
-    WiFi.begin(config.clientSSID, config.clientPasswd);
-    intCounterWifi = 0;
+//   if (!WiFi.softAP(ssid, password)) {
+//     log_e("Soft AP creation failed.");
+//     while(1);
+//   }    
+//     // if (!WiFi.softAP(config.deviceName, config.apPasswd)) {
+//     //   log_e("Soft AP creation failed.");
+//     //   while(1);
+//     // }
+//     delay(100);
+//     WiFi.setAutoReconnect(false);
+//     WiFi.softAP(config.deviceName,config.apPasswd, 13, 0, 2);
+//     WiFi.setTxPower(WIFI_POWER_15dBm);
+//     int txPower = WiFi.getTxPower();
+//     Serial.print("TX Power: ");
+//     Serial.println(txPower);
+//     delay(100);
+//     IPAddress ip( 192, 168, 1, 1 );
+//     IPAddress gateway( 192, 168, 1, 1 );
+//     IPAddress subnet( 255, 255, 255, 0 );
+//     delay(2000);
+//     WiFi.softAPConfig( ip, gateway, subnet );  
+//     IPAddress IP = WiFi.softAPIP();
+//     Serial.print("AP IP address: ");
+//     Serial.println(IP);
+//     ipAddress = IP.toString();
+//   }else{
+//     Serial.print("Setting HapiCap as client to network ");
+//     Serial.println(config.clientSSID);
+//     //WiFi.mode(WIFI_STA);
+//     WiFi.begin(config.clientSSID, config.clientPasswd);
+//     intCounterWifi = 0;
       
-    while (WiFi.status() != WL_CONNECTED){
-      delay(500);
-      //Serial.print(".");
-      intCounterWifi++;
-        if (intCounterWifi > 120){
-          Serial.println("");
-          config.asAP = 1;
-          saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
-          delay(1000);
-          ESP.restart();          
-        }
-      }
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(config.clientSSID);
-    IPAddress IP = WiFi.localIP();
-    ipAddress = IP.toString();
-  }
-hostAddress = "http://" + ipAddress;
-}
+//     while (WiFi.status() != WL_CONNECTED){
+//       delay(500);
+//       //Serial.print(".");
+//       intCounterWifi++;
+//         if (intCounterWifi > 120){
+//           Serial.println("");
+//           config.asAP = 1;
+//           saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
+//           delay(1000);
+//           ESP.restart();          
+//         }
+//       }
+//     Serial.println("");
+//     Serial.print("Connected to ");
+//     Serial.println(config.clientSSID);
+//     IPAddress IP = WiFi.localIP();
+//     ipAddress = IP.toString();
+//   }
+// hostAddress = "http://" + ipAddress;
+// }
 
 void magnometerSetup(){
   // start communication with IMU 
