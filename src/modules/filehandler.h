@@ -17,6 +17,7 @@ void putJSONDebugSettingsInMemory();
 void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata);
 void saveDebugSettings(fs::FS &fs, const char * path, const DebugSettings &debugSettings);
 void saveSensorData(fs::FS &fs, const char * path, const SensorData &sensorData);
+void saveConfiguration(fs::FS &fs, const char * path);
 
 void addMaptoDB(String PNGFile, String KMLFile, JsonObject obj);
 void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdated, bool kmlUpdated);

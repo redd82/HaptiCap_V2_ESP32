@@ -27,7 +27,7 @@ extern JsonDocument sensorDataDoc;
 extern JsonDocument debugSettingsDoc;
 extern JsonDocument mapListDoc;
 extern JsonDocument waypointsMapsDoc;
-extern JsonDocument selectedMapJSON;
+extern JsonDocument selectedMapDoc;
 
 // Local variables
 bool cssJsFileNamesConcat = false;
@@ -604,24 +604,24 @@ void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
   for (JsonObject map : mapListDoc["maps"].as<JsonArray>()) {
     int map_id = map["id"];
     if(requestedMap == map_id){
-      selectedMapJSON["id"] = map["id"];
-      selectedMapJSON["name"] = map["name"];
-      selectedMapJSON["area"] = map["area"];
-      selectedMapJSON["country"] = map["country"];
-      selectedMapJSON["pngFile"] = map["pngFile"];
-      selectedMapJSON["imageWidth"] = map["imageWidth"];
-      selectedMapJSON["imageHeight"] = map["imageHeight"];
-      selectedMapJSON["kmlFile"] = map["kmlFile"];
-      selectedMapJSON["realWorldHeight"] = map["realWorldHeight"];
-      selectedMapJSON["realWorldWidth"] = map["realWorldWidth"];
-      selectedMapJSON["scaleHeight"] = map["scaleHeight"];
-      selectedMapJSON["scaleWidth"] = map["scaleWidth"];
-      selectedMapJSON["north"] = map["north"];
-      selectedMapJSON["west"] = map["west"];
-      selectedMapJSON["south"] = map["south"];
-      selectedMapJSON["east"] = map["east"];
-      selectedMapJSON["rotation"] = map["rotation"];
-      selectedMapJSON["radius"] = map["radius"];
+      selectedMapDoc["id"] = map["id"];
+      selectedMapDoc["name"] = map["name"];
+      selectedMapDoc["area"] = map["area"];
+      selectedMapDoc["country"] = map["country"];
+      selectedMapDoc["pngFile"] = map["pngFile"];
+      selectedMapDoc["imageWidth"] = map["imageWidth"];
+      selectedMapDoc["imageHeight"] = map["imageHeight"];
+      selectedMapDoc["kmlFile"] = map["kmlFile"];
+      selectedMapDoc["realWorldHeight"] = map["realWorldHeight"];
+      selectedMapDoc["realWorldWidth"] = map["realWorldWidth"];
+      selectedMapDoc["scaleHeight"] = map["scaleHeight"];
+      selectedMapDoc["scaleWidth"] = map["scaleWidth"];
+      selectedMapDoc["north"] = map["north"];
+      selectedMapDoc["west"] = map["west"];
+      selectedMapDoc["south"] = map["south"];
+      selectedMapDoc["east"] = map["east"];
+      selectedMapDoc["rotation"] = map["rotation"];
+      selectedMapDoc["radius"] = map["radius"];
     }
   }
 }
