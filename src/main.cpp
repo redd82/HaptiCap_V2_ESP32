@@ -519,7 +519,7 @@ void setup(){
   delay(1000);
   //tiltCompensatedCompassSetup();
   wireScan();
-  //magnometerSetup();
+  magnometerSetup();
   getInitialReadings();
   delay(10000);
   if(!asAP){
