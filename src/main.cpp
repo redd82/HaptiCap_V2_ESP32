@@ -10,6 +10,7 @@
 #include "SensorFusion.h" //SF
 #include <string>
 
+#include "modules/pwm.h"
 #include "modules/filehandler.h"
 #include "modules/webserverhandler.h"
 #include "modules/hapticfeedback.h"
@@ -171,7 +172,6 @@ float ref_previous_compassheading = 0.0;
 float compass_diff = 0.0;
 int nrsatt = 0;
 
-
 String ipAddress;
 String hostAddress;
 String GPSTimeMinsSecs;
@@ -286,7 +286,6 @@ void wireScan(){
     error = Wire.endTransmission();
     if (error == 0){
       Serial.printf("I2C device found at address 0x%02X\n", address);
-
       nDevices++;
     } else if(error != 2){
       Serial.printf("Error %d at address 0x%02X\n", error, address);
@@ -309,9 +308,6 @@ void updateSensorData(){
     sensorData.ownLon = gps.location.lng();
     flCurrentLon = gps.location.lng();
     sensorData.compassHeading = getCompassHeading();
-    //sensorData.compassHeading = getTiltCompensatedHeading();
-    //Serial.println(sensorData.compassHeading);
-    //Serial.println(headingraw);
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
     sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
@@ -385,37 +381,6 @@ void timerSetup(){
   //timerStart(timer2);  
 }
 
-void PWMSetup(){
-//PWM setup
-  // ledcSetup(pwmhapticfront, hapticfreq, resolution);
-  // ledcSetup(pwmhapticright, hapticfreq, resolution);
-  // ledcSetup(pwmhapticrear, hapticfreq, resolution);
-  // ledcSetup(pwmhapticleft, hapticfreq, resolution);
-  // ledcAttachPin(hapticfront, pwmhapticfront);
-  // ledcAttachPin(hapticright, pwmhapticright);
-  // ledcAttachPin(hapticrear, pwmhapticrear);
-  // ledcAttachPin(hapticleft, pwmhapticleft);
-
-  ledcSetup(pwmledcommon, hapticfreq, resolution);
-  ledcSetup(pwmled0, hapticfreq, resolution);
-  ledcSetup(pwmled1, hapticfreq, resolution);
-  ledcSetup(pwmled2, hapticfreq, resolution);
-  ledcSetup(pwmled3, hapticfreq, resolution);
-  ledcSetup(pwmled4, hapticfreq, resolution);
-  ledcSetup(pwmled5, hapticfreq, resolution);
-  ledcSetup(pwmled6, hapticfreq, resolution);
-  ledcSetup(pwmled7, hapticfreq, resolution);
-  ledcAttachPin(ledcommon, pwmledcommon);
-  ledcAttachPin(led0, pwmled0);
-  ledcAttachPin(led1, pwmled1);
-  ledcAttachPin(led2, pwmled2);
-  ledcAttachPin(led3, pwmled3);
-  ledcAttachPin(led4, pwmled4);
-  ledcAttachPin(led5, pwmled5);
-  ledcAttachPin(led6, pwmled6);        
-  ledcAttachPin(led7, pwmled7);  
-}
-
 String get_wifi_status(int status){
     switch(status){
         case WL_IDLE_STATUS:
@@ -436,15 +401,6 @@ String get_wifi_status(int status){
     return "UNKNOWN_STATUS";
 }
 
-void magnometerSetup(){
-  // start communication with IMU 
-  if (!bno.begin())
-  {
-    Serial.print("No BNO055 detected");
-    while (1);
-  }
-
-}
 
 void ioSetup(){
 // Initialize outputs
@@ -520,7 +476,6 @@ void setup(){
   //tiltCompensatedCompassSetup();
   wireScan();
   magnometerSetup();
-  getInitialReadings();
   delay(10000);
   if(!asAP){
     Serial.print("IP address: ");
@@ -539,9 +494,9 @@ void setup(){
     }
 
   webServerSetup();
+  getInitialReadings();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
-  getInitialReadings();
   ElegantOTA.setAutoReboot(false);
   ElegantOTA.setAuth(config.deviceName, config.apPasswd);
   Serial.println("OTA Enabled!");

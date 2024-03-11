@@ -27,6 +27,15 @@ float deltat;
 // Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
 //float declinationAngle = (declAngleDeg + (declAngleMin / 60.0)) / (180.0 / PI);
 
+void magnometerSetup(){
+  // start communication with IMU 
+  if (!bno.begin())
+  {
+    Serial.print("No BNO055 detected");
+    while (1);
+  }
+
+}
 
 double getCompassHeading(){
   double ACCEL_VEL_TRANSITION =  (double)(BNO055_SAMPLERATE_DELAY_MS) / 1000.0;

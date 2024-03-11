@@ -5,6 +5,7 @@
 #include <Adafruit_BNO055.h>
 #include "SensorFusion.h"
 
+void magnometerSetup();
 double getCompassHeading();
 
 #endif
