@@ -117,40 +117,6 @@ touch_pad_t touchPin;
 int touchValueT0;
 int touchValueT3;
 
-#define LEDCOMMON 19
-#define LED7 18
-#define LED6 5
-#define LED5 4
-#define LED4 14
-#define LED3 27
-#define LED2 26
-#define LED1 25
-#define LED0 33 
-
-const int hapticfreq = 5000;
-const int resolution = 8;
-
-const int ledcommon = 19;
-const int led0 = 33;
-const int led1 = 25;
-const int led2 = 26;
-const int led3 = 27;
-const int led4 = 14;
-const int led5 = 4;
-const int led6 = 5;
-const int led7 = 18;
-
-const int pwmledcommon = 8;
-const int pwmled0 = 0;
-const int pwmled1 = 1;
-const int pwmled2 = 2;
-const int pwmled3 = 3;
-const int pwmled4 = 4;
-const int pwmled5 = 5;
-const int pwmled6 = 6;
-const int pwmled7 = 7;
-int intensityOffsetGreen = 20;
-
 bool bPrintHeader = false;
 int count = 0;
 int i = 0;
@@ -184,6 +150,7 @@ int day;
 int month;
 int year;
 int intCounterWifi = 0;
+bool magnetometerCalibrated = false;
 bool bUseTimerInterrupt = 1;
 bool bYouRang = 0;
 bool bNoJSONfile = 0;
@@ -200,6 +167,7 @@ bool bDebugTgrtReached = 0;
 bool bDebugHomeReached = 0;
 int GPSFix = 0;
 bool GPSFixAccepted = 0;
+bool compassCalibrated = false;
 bool asAP = true;
 bool startup = false;
 bool enableLed0;
@@ -307,7 +275,8 @@ void updateSensorData(){
     flCurrentLat = gps.location.lat();
     sensorData.ownLon = gps.location.lng();
     flCurrentLon = gps.location.lng();
-    sensorData.compassHeading = getCompassHeading();
+    //sensorData.compassHeading = getCompassHeading();
+    sensorData.compassHeading = readCompass();
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
     sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
@@ -338,7 +307,8 @@ void getInitialReadings(){
   flCurrentLat = gps.location.lat();
   sensorData.ownLon = gps.location.lng();
   flCurrentLon = gps.location.lng();
-  sensorData.compassHeading = getCompassHeading();
+  //sensorData.compassHeading = getCompassHeading();
+  sensorData.compassHeading = readCompass();
   //sensorData.compassHeading = getTiltCompensatedHeading();
   temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
   temp.toCharArray(sensorData.compassCardinal,8);
@@ -473,10 +443,13 @@ void setup(){
   PWMSetup();
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
-  //tiltCompensatedCompassSetup();
-  wireScan();
+  Serial.println("Magnometer setup...");
   magnometerSetup();
-  delay(10000);
+  delay(1000);
+  Serial.println("Calibrating Magnometer...");
+  calibrateCompass();
+  delay(1000);
+
   if(!asAP){
     Serial.print("IP address: ");
     Serial.println(ipAddress);
@@ -532,6 +505,7 @@ void loop(){
       portENTER_CRITICAL(&timer1Mux);
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
+      sensorData.compassHeading = readCompass();
       //sensorData.compassHeading = getCompassHeading();
       //sensorData.compassHeading = getTiltCompensatedHeading();
       if(interrupt1 > 10){

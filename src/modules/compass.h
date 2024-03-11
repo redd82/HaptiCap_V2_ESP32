@@ -1,11 +1,16 @@
 #ifndef COMPASS_H
 #define COMPASS_H
 
-#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
+#include <utility/imumaths.h>
 #include "SensorFusion.h"
 
 void magnometerSetup();
+void setupBNO055();
 double getCompassHeading();
+float readCompass();
+void calibrateCompass();
 
 #endif
