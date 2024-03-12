@@ -26,6 +26,7 @@ String prepMapNameForMapDB(String fileName);
 void readMapWaypointsFromJSON(fs::FS &fs, const char * path, int requestedMap);
 void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap);
 void saveSensorDataToJSON();
+void saveCalibrationDataToJSON();
 
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels);
 String printFreeSpace();

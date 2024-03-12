@@ -4,6 +4,7 @@ extern uint16_t BNO055_SAMPLERATE_DELAY_MS;
 extern Adafruit_BNO055 bno;
 extern SF fusion;
 
+extern CalData caldata;
 extern double DEG_2_RAD;
 extern float deltat;
 
@@ -33,8 +34,6 @@ float Xm;
 float Ym;
 float psi;
 
-
-
 float dt;
 unsigned long millisOld;
 
@@ -45,7 +44,7 @@ void setupBNO055() {
     bno.setExtCrystalUse(false);
 }
 
-void magnometerSetup(){
+void compassSetup(){
   if (!bno.begin())
   {
     Serial.print("No BNO055 detected");
@@ -53,18 +52,141 @@ void magnometerSetup(){
     while (1);
   }
     int8_t temp=bno.getTemp();
+    if(caldata.compassCalibrated){
+      Serial.println("Compass already calibrated");
+      adafruit_bno055_offsets_t calibrationData;
+      calibrationData.accel_offset_x = caldata.accelOffsetX;
+      calibrationData.accel_offset_y = caldata.accelOffsetY;
+      calibrationData.accel_offset_z = caldata.accelOffsetZ;
+      calibrationData.accel_radius = caldata.accelRadius;
+      calibrationData.gyro_offset_x = caldata.gyroOffsetX;
+      calibrationData.gyro_offset_y = caldata.gyroOffsetY;
+      calibrationData.gyro_offset_z = caldata.gyroOffsetZ;
+      calibrationData.mag_offset_x = caldata.magOffsetX;
+      calibrationData.mag_offset_y = caldata.magOffsetY;
+      calibrationData.mag_offset_z = caldata.magOffsetZ;
+      calibrationData.mag_radius = caldata.magRadius;
+      bno.setSensorOffsets(calibrationData);
+    }else{
+      Serial.println("Compass not calibrated");
+    }
+}
+
+void displaySensorDetails(void)
+{
+    sensor_t sensor;
+    bno.getSensor(&sensor);
+    Serial.println("------------------------------------");
+    Serial.print("Sensor:       "); Serial.println(sensor.name);
+    Serial.print("Driver Ver:   "); Serial.println(sensor.version);
+    Serial.print("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" xxx");
+    Serial.print("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" xxx");
+    Serial.print("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" xxx");
+    Serial.println("------------------------------------");
+    Serial.println("");
+    delay(500);
+}
+
+void displaySensorStatus(void)
+{
+    /* Get the system status values (mostly for debugging purposes) */
+    uint8_t system_status, self_test_results, system_error;
+    system_status = self_test_results = system_error = 0;
+    bno.getSystemStatus(&system_status, &self_test_results, &system_error);
+
+    /* Display the results in the Serial Monitor */
+    Serial.println("");
+    Serial.print("System Status: 0x");
+    Serial.println(system_status, HEX);
+    Serial.print("Self Test:     0x");
+    Serial.println(self_test_results, HEX);
+    Serial.print("System Error:  0x");
+    Serial.println(system_error, HEX);
+    Serial.println("");
+    delay(500);
+}
+
+void displayCalStatus(void)
+{
+    /* Get the four calibration values (0..3) */
+    /* Any sensor data reporting 0 should be ignored, */
+    /* 3 means 'fully calibrated" */
+    uint8_t system, gyro, accel, mag;
+    system = gyro = accel = mag = 0;
+    bno.getCalibration(&system, &gyro, &accel, &mag);
+
+    /* The data should be ignored until the system calibration is > 0 */
+    Serial.print("\t");
+    if (!system)
+    {
+        Serial.print("! ");
+    }
+
+    /* Display the individual values */
+    Serial.print("Sys:");
+    Serial.print(system, DEC);
+    Serial.print(" G:");
+    Serial.print(gyro, DEC);
+    Serial.print(" A:");
+    Serial.print(accel, DEC);
+    Serial.print(" M:");
+    Serial.print(mag, DEC);
+}
+
+void displaySensorOffsets(CalData &caldata)
+{
+    Serial.print("Accelerometer: ");
+    Serial.print(caldata.accelOffsetX); Serial.print(" ");
+    Serial.print(caldata.accelOffsetY); Serial.print(" ");
+    Serial.print(caldata.accelOffsetZ); Serial.print(" ");
+
+    Serial.print("\nGyro: ");
+    Serial.print(caldata.gyroOffsetX); Serial.print(" ");
+    Serial.print(caldata.gyroOffsetY); Serial.print(" ");
+    Serial.print(caldata.gyroOffsetZ); Serial.print(" ");
+
+    Serial.print("\nMag: ");
+    Serial.print(caldata.magOffsetX); Serial.print(" ");
+    Serial.print(caldata.magOffsetY); Serial.print(" ");
+    Serial.print(caldata.magOffsetZ); Serial.print(" ");
+
+    Serial.print("\nAccel Radius: ");
+    Serial.print(caldata.accelRadius);
+
+    Serial.print("\nMag Radius: ");
+    Serial.print(caldata.magRadius);
 }
 
 void calibrateCompass(){
-    while(!compassCalibrated){
-        uint8_t system, gyro, accel, mg = 0;
-        bno.getCalibration(&system, &gyro, &accel, &mg);
-        if (system < 3){
-                compassCalibrated   = false; 
-            } else {
-                compassCalibrated = true;
-        }
+    Serial.println("Calibrating compass...");
+  while(!caldata.compassCalibrated){
+    uint8_t system, gyro, accel, mg = 0;
+    bno.getCalibration(&system, &gyro, &accel, &mg);
+    if (system < 3 || gyro < 3 || accel < 3 || mg < 3) {
+        caldata.compassCalibrated   = false; 
+      } else {
+        adafruit_bno055_offsets_t newCalib;
+        caldata.compassCalibrated = true;
+        Serial.println("\nFully calibrated!");
+        Serial.println("--------------------------------");
+        Serial.println("Calibration Results: ");
+        bno.getSensorOffsets(newCalib);
+        Serial.println("--------------------------------");
+        caldata.compassCalibrated = true;
+        caldata.magOffsetX = newCalib.mag_offset_x;
+        caldata.magOffsetY = newCalib.mag_offset_y;
+        caldata.magOffsetZ = newCalib.mag_offset_z;
+        caldata.gyroOffsetX = newCalib.gyro_offset_x;
+        caldata.gyroOffsetY = newCalib.gyro_offset_y;
+        caldata.gyroOffsetZ = newCalib.gyro_offset_z;
+        caldata.accelOffsetX = newCalib.accel_offset_x;
+        caldata.accelOffsetY = newCalib.accel_offset_y;
+        caldata.accelOffsetZ = newCalib.accel_offset_z;
+        caldata.accelRadius = newCalib.accel_radius;
+        displaySensorOffsets(caldata);
     }
+  }
 }
 
 float readCompass() {
@@ -94,9 +216,29 @@ Ym=mag.y()*cos(phiRad)+mag.z()*sin(phiRad);
 psi=atan2(Ym,Xm)/(2*3.14)*360;
 phiFold=phiFnew;
 thetaFold=thetaFnew;
-compassheading = psi;
 
 delay(BNO055_SAMPLERATE_DELAY_MS);
+  if(!caldata.compassCalibrated){
+    psi = 999.9;
+  }
+
+  //Serial.println(psi);
+  //psi = 0.0;
+  // psi = psi + 180;
+  if(caldata.compassOffset >= 0){
+    if(psi < caldata.compassOffset){
+      psi = psi - caldata.compassOffset + 360.0;
+    }else{
+      psi = psi - caldata.compassOffset;
+    }
+  }else{
+      psi = psi + (-1.0 * caldata.compassOffset);
+      if(psi >= 360)
+      {
+          psi = psi - 360;
+      }
+  }
+
 return psi;
 }
 

@@ -275,8 +275,6 @@ void updateSensorData(){
     flCurrentLat = gps.location.lat();
     sensorData.ownLon = gps.location.lng();
     flCurrentLon = gps.location.lng();
-    //sensorData.compassHeading = getCompassHeading();
-    sensorData.compassHeading = readCompass();
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
     sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
@@ -307,9 +305,7 @@ void getInitialReadings(){
   flCurrentLat = gps.location.lat();
   sensorData.ownLon = gps.location.lng();
   flCurrentLon = gps.location.lng();
-  //sensorData.compassHeading = getCompassHeading();
-  sensorData.compassHeading = readCompass();
-  //sensorData.compassHeading = getTiltCompensatedHeading();
+  sensorData.compassHeading = 0;
   temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
   temp.toCharArray(sensorData.compassCardinal,8);
   previous_compassheading = sensorData.compassHeading;
@@ -371,7 +367,6 @@ String get_wifi_status(int status){
     return "UNKNOWN_STATUS";
 }
 
-
 void ioSetup(){
 // Initialize outputs
   //pinMode(led, OUTPUT);
@@ -412,6 +407,7 @@ void haptiCapReady(){
   Serial.print("Satellites: ");
   Serial.println(sensorData.nrOfSatellites);
   startup = true;
+  delay(4000);
 }
 
 void touchPadSetup(){
@@ -443,11 +439,8 @@ void setup(){
   PWMSetup();
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
-  Serial.println("Magnometer setup...");
-  magnometerSetup();
-  delay(1000);
-  Serial.println("Calibrating Magnometer...");
-  calibrateCompass();
+  Serial.println("Compass setup...");
+  compassSetup();
   delay(1000);
 
   if(!asAP){
@@ -456,35 +449,30 @@ void setup(){
     Serial.print("Host address: ");
     Serial.println(hostAddress);
     }else{
-      //dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-      //dnsServer.start(config.dns_port, "*", WiFi.softAPIP());
-      //Serial.print("DNS Started on port.");
-      //Serial.println(config.dns_port);
       Serial.print("IP address: ");
       Serial.println(ipAddress);
       Serial.print("Host address: ");
       Serial.println(hostAddress);
     }
-
-  webServerSetup();
-  getInitialReadings();
+    getInitialReadings();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
   ElegantOTA.setAutoReboot(false);
   ElegantOTA.setAuth(config.deviceName, config.apPasswd);
   Serial.println("OTA Enabled!");
+  webServerSetup();
   haptiCapReady();
-  //testFunction();
 }
 
 void loop(){
   if(debugSettings.debugGPS2Serial){
     smartDelay(50);
   }else{
- 
-    // if(asAP){  
-    //   dnsServer.processNextRequest();
-    // }
+    if(!caldata.compassCalibrated){
+      calibrateCompass();
+      saveCalibrationDataToJSON();
+      saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
+    }
 
   // Start of main code.
     if(timers_disabled){
@@ -506,8 +494,6 @@ void loop(){
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
       sensorData.compassHeading = readCompass();
-      //sensorData.compassHeading = getCompassHeading();
-      //sensorData.compassHeading = getTiltCompensatedHeading();
       if(interrupt1 > 10){
         interrupt1 = 2;
       }                 

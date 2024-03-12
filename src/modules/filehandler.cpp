@@ -281,24 +281,20 @@ void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {
 }
 
 void saveCalibrationDataToJSON(){
-  calDataDoc["calibrateMag"] = caldata.calibrateMag;
-  calDataDoc["compassOffset"] = String(caldata.compassOffset,2);
-  calDataDoc["magBiasX"] = String(caldata.magBiasX);
-  calDataDoc["magBiasY"] = String(caldata.magBiasY);
-  calDataDoc["magBiasZ"] = String(caldata.magBiasZ);  
-  calDataDoc["magScaleFacX"] = String(caldata.magScaleFacX,2);
-  calDataDoc["magScaleFacY"] = String(caldata.magScaleFacY,2);
-  calDataDoc["magScaleFacZ"] = String(caldata.magScaleFacZ,2);  
-  calDataDoc["gyroBiasX"] = String(caldata.gyroBiasX,6);
-  calDataDoc["gyroBiasY"] = String(caldata.gyroBiasY,6);
-  calDataDoc["gyroBiasZ"] = String(caldata.gyroBiasZ,6);
-  calDataDoc["accelBiasX"] = String(caldata.accelBiasX,6);
-  calDataDoc["accelBiasY"] = String(caldata.accelBiasY,6);
-  calDataDoc["accelBiasZ"] = String(caldata.accelBiasZ,6);
-  calDataDoc["accelScaleX"] = String(caldata.accelScaleX,6);
-  calDataDoc["accelScaleY"] = String(caldata.accelScaleY,6);
-  calDataDoc["accelScaleZ"] = String(caldata.accelScaleZ,6);
-  }
+  calDataDoc["compassCalibrated"] = caldata.compassCalibrated;
+  calDataDoc["accelOffsetX"] = String(caldata.accelOffsetX);
+  calDataDoc["accelOffsetY"] = String(caldata.accelOffsetY);
+  calDataDoc["accelOffsetZ"] = String(caldata.accelOffsetZ);  
+  calDataDoc["accelRadius"] = String(caldata.accelRadius);
+  calDataDoc["magOffsetX"] = String(caldata.magOffsetX);
+  calDataDoc["magOffsetY"] = String(caldata.magOffsetY);
+  calDataDoc["magOffsetZ"] = String(caldata.magOffsetZ);
+  calDataDoc["magRadius"] = String(caldata.magRadius);
+  calDataDoc["gyroOffsetX"] = String(caldata.gyroOffsetX);
+  calDataDoc["gyroOffsetY"] = String(caldata.gyroOffsetY);
+  calDataDoc["gyroOffsetZ"] = String(caldata.gyroOffsetZ);
+  calDataDoc["compassOffset"] = String(caldata.compassOffset);
+}
 
 // Saves the configuration to a file
 void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) {
@@ -319,23 +315,19 @@ void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) 
 }
 
 void putJSONCalibrationDataInMemory() {
-  caldata.calibrateMag = calDataDoc["calibrateMag"].as<bool>();
+  caldata.compassCalibrated = calDataDoc["compassCalibrated"].as<bool>();
   caldata.compassOffset = calDataDoc["compassOffset"].as<float>();
-  caldata.magBiasX = calDataDoc["magBiasX"].as<int>();
-  caldata.magBiasY = calDataDoc["magBiasY"].as<int>();
-  caldata.magBiasZ = calDataDoc["magBiasZ"].as<int>();  
-  caldata.magScaleFacX = calDataDoc["magScaleFacX"].as<float>();
-  caldata.magScaleFacY = calDataDoc["magScaleFacY"].as<float>();
-  caldata.magScaleFacZ = calDataDoc["magScaleFacZ"].as<float>();    
-  caldata.gyroBiasX = calDataDoc["gyroBiasX"].as<float>();
-  caldata.gyroBiasY = calDataDoc["gyroBiasY"].as<float>();
-  caldata.gyroBiasZ = calDataDoc["gyroBiasZ"].as<float>();
-  caldata.accelBiasX = calDataDoc["accelBiasX"].as<float>();
-  caldata.accelBiasY = calDataDoc["accelBiasY"].as<float>();
-  caldata.accelBiasZ = calDataDoc["accelBiasZ"].as<float>();    
-  caldata.accelScaleX = calDataDoc["accelScaleX"].as<float>();    
-  caldata.accelScaleY = calDataDoc["accelScaleY"].as<float>();    
-  caldata.accelScaleZ = calDataDoc["accelScaleZ"].as<float>();  
+  caldata.magOffsetX = calDataDoc["magOffsetX"].as<int>();
+  caldata.magOffsetY = calDataDoc["magOffsetY"].as<int>();
+  caldata.magOffsetZ = calDataDoc["magOffsetZ"].as<int>();  
+  caldata.magRadius = calDataDoc["magRadius"].as<int>();
+  caldata.gyroOffsetX = calDataDoc["gyroOffsetX"].as<int>();
+  caldata.gyroOffsetY = calDataDoc["gyroOffsetY"].as<int>();    
+  caldata.gyroOffsetZ = calDataDoc["gyroOffsetZ"].as<int>();
+  caldata.accelOffsetX = calDataDoc["accelOffsetX"].as<int>();
+  caldata.accelOffsetY = calDataDoc["accelOffsetY"].as<int>();
+  caldata.accelOffsetZ = calDataDoc["accelOffsetZ"].as<int>();
+  caldata.accelRadius  = calDataDoc["accelRadius"].as<int>(); 
 }
 
 // Loads the calibration data from a file
