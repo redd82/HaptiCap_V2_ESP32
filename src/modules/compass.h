@@ -2,10 +2,12 @@
 #define COMPASS_H
 
 #include <Wire.h>
+#include <Adafruit_LIS3MDL.h>
+#include <Adafruit_LSM6DS3TRC.h>
+#include "Adafruit_Sensor_Calibration.h"
 #include <Adafruit_Sensor.h>
-#include <Adafruit_BNO055.h>
-#include <utility/imumaths.h>
 #include "SensorFusion.h"
+#include "filehandler.h"
 #include "../structs/caldata.h"
 
 void compassSetup();
@@ -13,9 +15,9 @@ void displaySensorDetails(void);
 void displaySensorStatus(void);
 void displayCalStatus(void);
 void displaySensorOffsets(const CalData &caldata);
-void setupBNO055();
-double getCompassHeading();
+void debugMag();
+void debugGyroAccel();
+void plotterDataGyroAccelMag();
+bool calibrateCompass();
 float readCompass();
-void calibrateCompass();
-
 #endif

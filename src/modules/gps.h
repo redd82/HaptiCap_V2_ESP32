@@ -8,6 +8,7 @@
 String getGPSTimeMinsSecs();
 String getGPSTimeMins();
 String getGPSDate();
+void getGPSData();
 unsigned long distance2waypoint(float waypoint_latt, float waypoint_long);
 float coarse2waypoint(float waypoint_latt, float waypoint_long);
 float CalcRelHeading(float compforheading,float coarseforWaypoint);

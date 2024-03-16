@@ -317,17 +317,17 @@ void saveCalibrationData(fs::FS &fs, const char * path, const CalData &caldata) 
 void putJSONCalibrationDataInMemory() {
   caldata.compassCalibrated = calDataDoc["compassCalibrated"].as<bool>();
   caldata.compassOffset = calDataDoc["compassOffset"].as<float>();
-  caldata.magOffsetX = calDataDoc["magOffsetX"].as<int>();
-  caldata.magOffsetY = calDataDoc["magOffsetY"].as<int>();
-  caldata.magOffsetZ = calDataDoc["magOffsetZ"].as<int>();  
-  caldata.magRadius = calDataDoc["magRadius"].as<int>();
-  caldata.gyroOffsetX = calDataDoc["gyroOffsetX"].as<int>();
-  caldata.gyroOffsetY = calDataDoc["gyroOffsetY"].as<int>();    
-  caldata.gyroOffsetZ = calDataDoc["gyroOffsetZ"].as<int>();
-  caldata.accelOffsetX = calDataDoc["accelOffsetX"].as<int>();
-  caldata.accelOffsetY = calDataDoc["accelOffsetY"].as<int>();
-  caldata.accelOffsetZ = calDataDoc["accelOffsetZ"].as<int>();
-  caldata.accelRadius  = calDataDoc["accelRadius"].as<int>(); 
+  caldata.magOffsetX = calDataDoc["magOffsetX"].as<float>();
+  caldata.magOffsetY = calDataDoc["magOffsetY"].as<float>();
+  caldata.magOffsetZ = calDataDoc["magOffsetZ"].as<float>();  
+  caldata.magRadius = calDataDoc["magRadius"].as<float>();
+  caldata.gyroOffsetX = calDataDoc["gyroOffsetX"].as<float>();
+  caldata.gyroOffsetY = calDataDoc["gyroOffsetY"].as<float>();    
+  caldata.gyroOffsetZ = calDataDoc["gyroOffsetZ"].as<float>();
+  caldata.accelOffsetX = calDataDoc["accelOffsetX"].as<float>();
+  caldata.accelOffsetY = calDataDoc["accelOffsetY"].as<float>();
+  caldata.accelOffsetZ = calDataDoc["accelOffsetZ"].as<float>();
+  caldata.accelRadius  = calDataDoc["accelRadius"].as<float>(); 
 }
 
 // Loads the calibration data from a file

@@ -1,18 +1,48 @@
 #include "compass.h"
 
-extern uint16_t BNO055_SAMPLERATE_DELAY_MS;
-extern Adafruit_BNO055 bno;
+// global objects and variables
 extern SF fusion;
-
+extern Adafruit_LIS3MDL lis3mdl;
+extern Adafruit_LSM6DS3TRC lsm6ds3strc;
+extern String jsonDir;
+extern String fileCalDataJSON;
 extern CalData caldata;
 extern double DEG_2_RAD;
 extern float deltat;
-
 extern bool magnetometerCalibrated;
-
 extern bool compassCalibrated;
 extern float compassheading;
 
+// local objects and variables
+Adafruit_Sensor_Calibration_EEPROM cal; 
+Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
+sensors_event_t mag_event, gyro_event, accel_event, temp_event;
+
+struct SensorDataMag
+{
+  float min_x, max_x, mid_x, min_y, max_y, mid_y, min_z, max_z, mid_z;
+};
+
+struct SensorDataGyro
+{
+  float min_x, max_x, mid_x, min_y, max_y, mid_y, min_z, max_z, mid_z;
+};
+
+struct SensorDataAccel
+{
+  float min_x, max_x, mid_x, min_y, max_y, mid_y, min_z, max_z, mid_z;
+};
+
+SensorDataMag magData;
+SensorDataGyro gyroData;
+SensorDataAccel accelData;
+
+int loopcount = 0;
+
+byte calDataBuffer[68]; // buffer to receive magnetic calibration data
+byte calcount=0;
+
+int calSamples = 1000;
 float gx, gy, gz, ax, ay, az, mx, my, mz, temp;
 float pitch, roll, yaw;
 float deltat;
@@ -37,345 +67,366 @@ float psi;
 float dt;
 unsigned long millisOld;
 
-void setupBNO055() {
-    bno.begin();
-    delay(1000);
-    int8_t temp=bno.getTemp();
-    bno.setExtCrystalUse(false);
+void setupLis3md(){
+    if (! lis3mdl.begin_I2C()) { 
+      Serial.println("Failed to find LIS3MDL chip");
+    while (1) { delay(10); }
+  }
+  Serial.println("LIS3MDL Found!");
+
+  lis3mdl.setRange(LIS3MDL_RANGE_4_GAUSS);
+  lis3mdl.setDataRate(LIS3MDL_DATARATE_1000_HZ);
+  lis3mdl.setPerformanceMode(LIS3MDL_MEDIUMMODE);
+  lis3mdl.setOperationMode(LIS3MDL_CONTINUOUSMODE);
+
+  lis3mdl.getEvent(&mag_event);
+  magData.min_x = magData.max_x = mag_event.magnetic.x;
+  magData.min_y = magData.max_y = mag_event.magnetic.y;
+  magData.min_z = magData.max_z = mag_event.magnetic.z;
+}
+
+void setupLsm6ds3strc(){
+  if (! lsm6ds3strc.begin_I2C()) {
+    Serial.println("Failed to find LSM6DS3TRC chip");
+    while (1) { delay(10); }
+  }
+  Serial.println("LSM6DS3TRC Found!");
+  lsm6ds3strc.setAccelRange(LSM6DS_ACCEL_RANGE_2_G);
+  lsm6ds3strc.setGyroRange(LSM6DS_GYRO_RANGE_250_DPS);
+  lsm6ds3strc.setAccelDataRate(LSM6DS_RATE_104_HZ);
+  lsm6ds3strc.setGyroDataRate(LSM6DS_RATE_104_HZ);
+  lsm6ds3strc.configInt1(false, false, true); // accelerometer DRDY on INT1
+  lsm6ds3strc.configInt2(false, true, false); // gyro DRDY on INT2
+}
+
+void debugMag(){
+  lis3mdl.getEvent(&mag_event);
+  Serial.print("X: "); Serial.print(mag_event.magnetic.x); Serial.print(" uT\t");
+  Serial.print("Y: "); Serial.print(mag_event.magnetic.y); Serial.print(" uT\t");
+  Serial.print("Z: "); Serial.print(mag_event.magnetic.z); Serial.print(" uT\t");
+  Serial.println("Temp: " + String(mag_event.temperature) + "C");
+  delay(100);
+}
+
+void debugGyroAccel(){
+  lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
+  Serial.print("Accel X: "); Serial.print(accel_event.acceleration.x); Serial.print(" m/s^2\t");
+  Serial.print("Y: "); Serial.print(accel_event.acceleration.y); Serial.print(" m/s^2\t");
+  Serial.print("Z: "); Serial.print(accel_event.acceleration.z); Serial.print(" m/s^2\t");
+  Serial.print("Gyro X: "); Serial.print(gyro_event.gyro.x); Serial.print(" rad/s\t");
+  Serial.print("Y: "); Serial.print(gyro_event.gyro.y); Serial.print(" rad/s\t");
+  Serial.print("Z: "); Serial.print(gyro_event.gyro.z); Serial.print(" rad/s\t");
+  Serial.println("Temp: " + String(temp_event.temperature) + "C");
+  delay(100);
+}
+
+void plotterDataGyroAccelMag(){
+  lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
+  lis3mdl.getEvent(&mag_event);
+  Serial.print(accel_event.acceleration.x); Serial.print(",");
+  Serial.print(accel_event.acceleration.y); Serial.print(",");
+  Serial.print(accel_event.acceleration.z); Serial.print(",");
+  Serial.print(gyro_event.gyro.x); Serial.print(",");
+  Serial.print(gyro_event.gyro.y); Serial.print(",");
+  Serial.print(gyro_event.gyro.z); Serial.print(",");
+  Serial.print(mag_event.magnetic.x); Serial.print(",");
+  Serial.print(mag_event.magnetic.y); Serial.print(",");
+  Serial.print(mag_event.magnetic.z); Serial.print(",");
+  //Serial.println(temp_event.temperature);
+  delay(100);
+}
+
+void calibrateMagHardIron(){
+  Serial.println(F("Move the sensor in a figure 8 until done!"));
+  Serial.print(F("Fetching samples in 3..."));
+  delay(1000);
+  Serial.print("2...");
+  delay(1000);
+  Serial.print("1...");
+  delay(1000);
+  Serial.println("NOW!");
+  int i = 0;
+  while(i < calSamples){
+    lis3mdl.getEvent(&mag_event);
+    float x = mag_event.magnetic.x;
+    float y = mag_event.magnetic.y;
+    float z = mag_event.magnetic.z;
+
+    Serial.print("Mag: (");
+    Serial.print(x); Serial.print(", ");
+    Serial.print(y); Serial.print(", ");
+    Serial.print(z); Serial.print(")");
+
+    magData.min_x = min(magData.min_x, x);
+    magData.min_y = min(magData.min_y, y);
+    magData.min_z = min(magData.min_z, z);
+
+    magData.max_x = max(magData.max_x, x);
+    magData.max_y = max(magData.max_y, y);
+    magData.max_z = max(magData.max_z, z);
+
+    magData.mid_x = (magData.max_x + magData.min_x) / 2;
+    magData.mid_y = (magData.max_y + magData.min_y) / 2;
+    magData.mid_z = (magData.max_z + magData.min_z) / 2;
+    Serial.print(" Hard offset: (");
+    Serial.print(magData.mid_x); Serial.print(", ");
+    Serial.print(magData.mid_y); Serial.print(", ");
+    Serial.print(magData.mid_z); Serial.print(")");  
+
+    Serial.print(" Field: (");
+    Serial.print((magData.max_x - magData.min_x)/2); Serial.print(", ");
+    Serial.print((magData.max_y - magData.min_y)/2); Serial.print(", ");
+    Serial.print((magData.max_z - magData.min_z)/2); Serial.println(")");
+    i++;    
+    delay(10); 
+  }
+  caldata.magOffsetX = magData.mid_x;
+  caldata.magOffsetY = magData.mid_y;
+  caldata.magOffsetZ = magData.mid_z;
+  Serial.println(F("Magneto hard iron calibration done!"));
+    delay(3000);
+}
+
+void calibrateGyroHardIron(){
+  Serial.println(F("Place gyro on flat, stable surface!"));
+  Serial.print(F("Fetching samples in 3..."));
+  delay(1000);
+  Serial.print("2...");
+  delay(1000);
+  Serial.print("1...");
+  delay(1000);
+  Serial.println("NOW!");
+  float x, y, z;
+  for (uint16_t sample = 0; sample < calSamples; sample++) {
+    lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
+    x = gyro_event.gyro.x;
+    y = gyro_event.gyro.y;
+    z = gyro_event.gyro.z;
+    Serial.print(F("Gyro: ("));
+    Serial.print(x); Serial.print(", ");
+    Serial.print(y); Serial.print(", ");
+    Serial.print(z); Serial.print(")");
+
+    gyroData.min_x = min(gyroData.min_x, x);
+    gyroData.min_y = min(gyroData.min_y, y);
+    gyroData.min_z = min(gyroData.min_z, z);
+  
+    gyroData.max_x = max(gyroData.max_x, x);
+    gyroData.max_y = max(gyroData.max_y, y);
+    gyroData.max_z = max(gyroData.max_z, z);
+  
+    gyroData.mid_x = (gyroData.max_x + gyroData.min_x) / 2;
+    gyroData.mid_y = (gyroData.max_y + gyroData.min_y) / 2;
+    gyroData.mid_z = (gyroData.max_z + gyroData.min_z) / 2;
+
+    Serial.print(F(" Zero rate offset: ("));
+    Serial.print(gyroData.mid_x, 4); Serial.print(", ");
+    Serial.print(gyroData.mid_y, 4); Serial.print(", ");
+    Serial.print(gyroData.mid_z, 4); Serial.print(")");  
+  
+    Serial.print(F(" rad/s noise: ("));
+    Serial.print(gyroData.max_x - gyroData.min_x, 3); Serial.print(", ");
+    Serial.print(gyroData.max_y - gyroData.min_y, 3); Serial.print(", ");
+    Serial.print(gyroData.max_z - gyroData.min_z, 3); Serial.println(")");   
+    delay(10);
+  }
+  Serial.println(F("\n\nFinal zero rate offset in radians/s: "));
+  Serial.print(gyroData.mid_x, 4); Serial.print(", ");
+  Serial.print(gyroData.mid_y, 4); Serial.print(", ");
+  Serial.println(gyroData.mid_z, 4);
+  caldata.gyroOffsetX = gyroData.mid_x;
+  caldata.gyroOffsetY = gyroData.mid_y;
+  caldata.gyroOffsetZ = gyroData.mid_z;
+  Serial.println(F("Gyro hard iron calibration done!"));
+  delay(3000);
+}
+
+void motionCal(){
+  while(1){
+  lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
+  lis3mdl.getEvent(&mag_event);
+  Serial.print("Raw:");
+  Serial.print(int(accel_event.acceleration.x*8192/9.8)); Serial.print(",");
+  Serial.print(int(accel_event.acceleration.y*8192/9.8)); Serial.print(",");
+  Serial.print(int(accel_event.acceleration.z*8192/9.8)); Serial.print(",");
+  Serial.print(int(gyro_event.gyro.x*SENSORS_RADS_TO_DPS*16)); Serial.print(",");
+  Serial.print(int(gyro_event.gyro.y*SENSORS_RADS_TO_DPS*16)); Serial.print(",");
+  Serial.print(int(gyro_event.gyro.z*SENSORS_RADS_TO_DPS*16)); Serial.print(",");
+  Serial.print(int(mag_event.magnetic.x*10)); Serial.print(",");
+  Serial.print(int(mag_event.magnetic.y*10)); Serial.print(",");
+  Serial.print(int(mag_event.magnetic.z*10)); Serial.println("");
+  loopcount++;
+  receiveCalibration();
+
+  if (loopcount == 50 || loopcount > 100) {
+    Serial.print("Cal1:");
+    Serial.print(caldata.accelOffsetX, 3); 
+    Serial.print(",");
+    Serial.print(caldata.accelOffsetY, 3); 
+    Serial.print(",");
+    Serial.print(caldata.accelOffsetZ, 3); 
+    Serial.print(",");
+
+    Serial.print(caldata.gyroOffsetX, 3);
+    Serial.print(",");
+    Serial.print(caldata.gyroOffsetY, 3);
+    Serial.print(",");
+    Serial.print(caldata.gyroOffsetZ, 3);      
+    Serial.print(",");
+  
+    Serial.print(caldata.magOffsetX, 3); 
+    Serial.print(",");
+    Serial.print(caldata.magOffsetY, 3); 
+    Serial.print(",");
+    Serial.print(caldata.magOffsetZ, 3); 
+    Serial.print(",");            
+
+    Serial.println(caldata.magField, 3);
+    loopcount++;
+  }
+  if (loopcount >= 100) {
+    Serial.print("Cal2:");
+    for (int i=0; i<9; i++) {
+      Serial.print(cal.mag_softiron[i], 4); 
+      if (i < 8) Serial.print(',');
+    }
+    Serial.println();
+    loopcount = 0;
+  }
+
+  delay(10); 
+  }
+}
+
+void receiveCalibration() {
+  uint16_t crc;
+  byte b, i;
+
+  while (Serial.available()) {
+    b = Serial.read();
+    if (calcount == 0 && b != 117) {
+      // first byte must be 117
+      return;
+    }
+    if (calcount == 1 && b != 84) {
+      // second byte must be 84
+      calcount = 0;
+      return;
+    }
+    // store this byte
+    calDataBuffer[calcount++] = b;
+    if (calcount < 68) {
+      // full calibration message is 68 bytes
+      return;
+    }
+    // verify the crc16 check
+    crc = 0xFFFF;
+    for (i=0; i < 68; i++) {
+      crc = crc16_update(crc, calDataBuffer[i]);
+    }
+    if (crc == 0) {
+      // data looks good, use it
+      float offsets[16];
+      memcpy(offsets, calDataBuffer+2, 16*4);
+      cal.accel_zerog[0] = offsets[0];
+      cal.accel_zerog[1] = offsets[1];
+      cal.accel_zerog[2] = offsets[2];
+      
+      cal.gyro_zerorate[0] = offsets[3];
+      cal.gyro_zerorate[1] = offsets[4];
+      cal.gyro_zerorate[2] = offsets[5];
+      
+      cal.mag_hardiron[0] = offsets[6];
+      cal.mag_hardiron[1] = offsets[7];
+      cal.mag_hardiron[2] = offsets[8];
+
+      cal.mag_field = offsets[9];
+      
+      cal.mag_softiron[0] = offsets[10];
+      cal.mag_softiron[1] = offsets[13];
+      cal.mag_softiron[2] = offsets[14];
+      cal.mag_softiron[3] = offsets[13];
+      cal.mag_softiron[4] = offsets[11];
+      cal.mag_softiron[5] = offsets[15];
+      cal.mag_softiron[6] = offsets[14];
+      cal.mag_softiron[7] = offsets[15];
+      cal.mag_softiron[8] = offsets[12];
+
+      if (! cal.saveCalibration()) {
+        Serial.println("**WARNING** Couldn't save calibration");
+      } else {
+        Serial.println("Wrote calibration");    
+      }
+      cal.printSavedCalibration();
+      calcount = 0;
+      return;
+    }
+    // look for the 117,84 in the data, before discarding
+    for (i=2; i < 67; i++) {
+      if (calDataBuffer[i] == 117 && calDataBuffer[i+1] == 84) {
+        // found possible start within data
+        calcount = 68 - i;
+        memmove(calDataBuffer, calDataBuffer + i, calcount);
+        return;
+      }
+    }
+    // look for 117 in last byte
+    if (calDataBuffer[67] == 117) {
+      calDataBuffer[0] = 117;
+      calcount = 1;
+    } else {
+      calcount = 0;
+    }
+  }
+}
+
+uint16_t crc16_update(uint16_t crc, uint8_t a)
+{
+  int i;
+  crc ^= a;
+  for (i = 0; i < 8; i++) {
+    if (crc & 1) {
+      crc = (crc >> 1) ^ 0xA001;
+    } else {
+      crc = (crc >> 1);
+    }
+  }
+  return crc;
+}
+
+void setup_sensors(void) { //lis3md lsm6ds3strc
+  setupLis3md();
+  setupLsm6ds3strc();
+  calibrateCompass();
 }
 
 void compassSetup(){
-  if (!bno.begin())
-  {
-    Serial.print("No BNO055 detected");
-    delay(1000);
-    while (1);
-  }
-    int8_t temp=bno.getTemp();
-    if(caldata.compassCalibrated){
-      Serial.println("Compass already calibrated");
-      adafruit_bno055_offsets_t calibrationData;
-      calibrationData.accel_offset_x = caldata.accelOffsetX;
-      calibrationData.accel_offset_y = caldata.accelOffsetY;
-      calibrationData.accel_offset_z = caldata.accelOffsetZ;
-      calibrationData.accel_radius = caldata.accelRadius;
-      calibrationData.gyro_offset_x = caldata.gyroOffsetX;
-      calibrationData.gyro_offset_y = caldata.gyroOffsetY;
-      calibrationData.gyro_offset_z = caldata.gyroOffsetZ;
-      calibrationData.mag_offset_x = caldata.magOffsetX;
-      calibrationData.mag_offset_y = caldata.magOffsetY;
-      calibrationData.mag_offset_z = caldata.magOffsetZ;
-      calibrationData.mag_radius = caldata.magRadius;
-      bno.setSensorOffsets(calibrationData);
-    }else{
-      Serial.println("Compass not calibrated");
-    }
+  setup_sensors();
 }
 
-void displaySensorDetails(void)
-{
-    sensor_t sensor;
-    bno.getSensor(&sensor);
-    Serial.println("------------------------------------");
-    Serial.print("Sensor:       "); Serial.println(sensor.name);
-    Serial.print("Driver Ver:   "); Serial.println(sensor.version);
-    Serial.print("Unique ID:    "); Serial.println(sensor.sensor_id);
-    Serial.print("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" xxx");
-    Serial.print("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" xxx");
-    Serial.print("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" xxx");
-    Serial.println("------------------------------------");
-    Serial.println("");
-    delay(500);
-}
-
-void displaySensorStatus(void)
-{
-    /* Get the system status values (mostly for debugging purposes) */
-    uint8_t system_status, self_test_results, system_error;
-    system_status = self_test_results = system_error = 0;
-    bno.getSystemStatus(&system_status, &self_test_results, &system_error);
-
-    /* Display the results in the Serial Monitor */
-    Serial.println("");
-    Serial.print("System Status: 0x");
-    Serial.println(system_status, HEX);
-    Serial.print("Self Test:     0x");
-    Serial.println(self_test_results, HEX);
-    Serial.print("System Error:  0x");
-    Serial.println(system_error, HEX);
-    Serial.println("");
-    delay(500);
-}
-
-void displayCalStatus(void)
-{
-    /* Get the four calibration values (0..3) */
-    /* Any sensor data reporting 0 should be ignored, */
-    /* 3 means 'fully calibrated" */
-    uint8_t system, gyro, accel, mag;
-    system = gyro = accel = mag = 0;
-    bno.getCalibration(&system, &gyro, &accel, &mag);
-
-    /* The data should be ignored until the system calibration is > 0 */
-    Serial.print("\t");
-    if (!system)
-    {
-        Serial.print("! ");
-    }
-
-    /* Display the individual values */
-    Serial.print("Sys:");
-    Serial.print(system, DEC);
-    Serial.print(" G:");
-    Serial.print(gyro, DEC);
-    Serial.print(" A:");
-    Serial.print(accel, DEC);
-    Serial.print(" M:");
-    Serial.print(mag, DEC);
-}
-
-void displaySensorOffsets(CalData &caldata)
-{
-    Serial.print("Accelerometer: ");
-    Serial.print(caldata.accelOffsetX); Serial.print(" ");
-    Serial.print(caldata.accelOffsetY); Serial.print(" ");
-    Serial.print(caldata.accelOffsetZ); Serial.print(" ");
-
-    Serial.print("\nGyro: ");
-    Serial.print(caldata.gyroOffsetX); Serial.print(" ");
-    Serial.print(caldata.gyroOffsetY); Serial.print(" ");
-    Serial.print(caldata.gyroOffsetZ); Serial.print(" ");
-
-    Serial.print("\nMag: ");
-    Serial.print(caldata.magOffsetX); Serial.print(" ");
-    Serial.print(caldata.magOffsetY); Serial.print(" ");
-    Serial.print(caldata.magOffsetZ); Serial.print(" ");
-
-    Serial.print("\nAccel Radius: ");
-    Serial.print(caldata.accelRadius);
-
-    Serial.print("\nMag Radius: ");
-    Serial.print(caldata.magRadius);
-}
-
-void calibrateCompass(){
-    Serial.println("Calibrating compass...");
-  while(!caldata.compassCalibrated){
-    uint8_t system, gyro, accel, mg = 0;
-    bno.getCalibration(&system, &gyro, &accel, &mg);
-    if (system < 3 || gyro < 3 || accel < 3 || mg < 3) {
-        caldata.compassCalibrated   = false; 
-      } else {
-        adafruit_bno055_offsets_t newCalib;
-        caldata.compassCalibrated = true;
-        Serial.println("\nFully calibrated!");
-        Serial.println("--------------------------------");
-        Serial.println("Calibration Results: ");
-        bno.getSensorOffsets(newCalib);
-        Serial.println("--------------------------------");
-        caldata.compassCalibrated = true;
-        caldata.magOffsetX = newCalib.mag_offset_x;
-        caldata.magOffsetY = newCalib.mag_offset_y;
-        caldata.magOffsetZ = newCalib.mag_offset_z;
-        caldata.gyroOffsetX = newCalib.gyro_offset_x;
-        caldata.gyroOffsetY = newCalib.gyro_offset_y;
-        caldata.gyroOffsetZ = newCalib.gyro_offset_z;
-        caldata.accelOffsetX = newCalib.accel_offset_x;
-        caldata.accelOffsetY = newCalib.accel_offset_y;
-        caldata.accelOffsetZ = newCalib.accel_offset_z;
-        caldata.accelRadius = newCalib.accel_radius;
-        displaySensorOffsets(caldata);
-    }
-  }
-}
-
-float readCompass() {
-  // put your main code here, to run repeatedly:
-imu::Vector<3> acc =bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
-imu::Vector<3> gyr =bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-imu::Vector<3> mag =bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
-
-thetaM=-atan2(acc.x()/9.8,acc.z()/9.8)/2/3.141592654*360;
-phiM=-atan2(acc.y()/9.8,acc.z()/9.8)/2/3.141592654*360;
-phiFnew=.95*phiFold+.05*phiM;
-thetaFnew=.95*thetaFold+.05*thetaM;
- 
-dt=(millis()-millisOld)/1000.;
-millisOld=millis();
-theta=(theta+gyr.y()*dt)*.95+thetaM*.05;
-phi=(phi-gyr.x()*dt)*.95+ phiM*.05;
-thetaG=thetaG+gyr.y()*dt;
-phiG=phiG-gyr.x()*dt;
- 
-phiRad=phi/360*(2*3.14);
-thetaRad=theta/360*(2*3.14);
- 
-Xm=mag.x()*cos(thetaRad)-mag.y()*sin(phiRad)*sin(thetaRad)+mag.z()*cos(phiRad)*sin(thetaRad);
-Ym=mag.y()*cos(phiRad)+mag.z()*sin(phiRad);
- 
-psi=atan2(Ym,Xm)/(2*3.14)*360;
-phiFold=phiFnew;
-thetaFold=thetaFnew;
-
-delay(BNO055_SAMPLERATE_DELAY_MS);
+bool calibrateCompass(){
   if(!caldata.compassCalibrated){
-    psi = 999.9;
+    calibrateMagHardIron();
+    calibrateGyroHardIron();
+    caldata.compassCalibrated = true;
+    saveCalibrationDataToJSON();
+    saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   }
-
-  //Serial.println(psi);
-  //psi = 0.0;
-  // psi = psi + 180;
-  if(caldata.compassOffset >= 0){
-    if(psi < caldata.compassOffset){
-      psi = psi - caldata.compassOffset + 360.0;
-    }else{
-      psi = psi - caldata.compassOffset;
-    }
-  }else{
-      psi = psi + (-1.0 * caldata.compassOffset);
-      if(psi >= 360)
-      {
-          psi = psi - 360;
-      }
-  }
-
-return psi;
+  return false;
 }
 
-// Serial.print(theta);
-// Serial.print(",");
-// Serial.print(phi);
-// Serial.print(",");
-// Serial.print(psi);
-// Serial.print(",");
-// Serial.println(system);
-// Serial.print(acc.x()/9.8);
-// Serial.print(",");
-// Serial.print(acc.y()/9.8);
-// Serial.print(",");
-// Serial.print(acc.z()/9.8);
-// Serial.print(",");
-// Serial.print(accel);
-// Serial.print(",");
-// Serial.print(gyro);
-// Serial.print(",");
-// Serial.print(mg);
-// Serial.print(",");
-// Serial.print(system);
-// Serial.print(",");
-// Serial.print(thetaM);
-// Serial.print(",");
-// Serial.print(phiM);
-// Serial.print(",");
-// Serial.print(thetaFnew);
-// Serial.print(",");
-// Serial.print(phiFnew);
- 
-// Serial.print(",");
-// Serial.print(thetaG);
-// Serial.print(",");
-// Serial.print(phiG);
-// Serial.print(",");
-// Serial.print(theta);
-// Serial.print(",");
-// Serial.println(phi);
+void readMag(){
 
-
-
-// ----- Record compass offsets, scale factors, & ASA values
-/*
-   These values seldom change ... an occasional check is sufficient
-   (1) Open your Arduino "Serial Monitor
-   (2) Set "Record_data=true;" then upload & run program.
-   (3) Replace the values below with the values that appear on the Serial Monitor.
-   (4) Set "Record_data = false;" then upload & rerun program.
-*/
-// bool    Record_data = true;
-// int     Mag_x_offset = 46,      Mag_y_offset = 190,     Mag_z_offset = -254;   // Hard-iron offsets
-// float   Mag_x_scale = 1.01,     Mag_y_scale = 0.99,     Mag_z_scale = 1.00;    // Soft-iron scale factors
-// float   ASAX = 1.17,            ASAY = 1.18,            ASAZ = 1.14;           // (A)sahi (S)ensitivity (A)djustment fuse ROM values.
-
-// Set declination angle on your location and fix heading
-// Formula: (deg + (minutes / 60.0)) / (180 / M_PI); (4.0 + (26.0 / 60.0)) / (180 / PI);
-//float declinationAngle = (declAngleDeg + (declAngleMin / 60.0)) / (180.0 / PI);
-
-double getCompassHeading(){
-  double ACCEL_VEL_TRANSITION =  (double)(BNO055_SAMPLERATE_DELAY_MS) / 1000.0;
-  double ACCEL_POS_TRANSITION = 0.5 * ACCEL_VEL_TRANSITION * ACCEL_VEL_TRANSITION;
-  double xPos = 0, yPos = 0, headingVel = 0;
-  sensors_event_t orientationData , angVelocityData , linearAccelData, magnetometerData, accelerometerData, gravityData;
-  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-  bno.getEvent(&angVelocityData, Adafruit_BNO055::VECTOR_GYROSCOPE);
-  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-  bno.getEvent(&magnetometerData, Adafruit_BNO055::VECTOR_MAGNETOMETER);
-  bno.getEvent(&accelerometerData, Adafruit_BNO055::VECTOR_ACCELEROMETER);
-  bno.getEvent(&gravityData, Adafruit_BNO055::VECTOR_GRAVITY);
-
-  xPos = xPos + ACCEL_POS_TRANSITION * linearAccelData.acceleration.x;
-  yPos = yPos + ACCEL_POS_TRANSITION * linearAccelData.acceleration.y;
-  headingVel = ACCEL_VEL_TRANSITION * linearAccelData.acceleration.x / cos(DEG_2_RAD * orientationData.orientation.x);
-
-  // ax = IMU.getAccelX_mss();
-  // ay = IMU.getAccelY_mss();
-  // az = IMU.getAccelZ_mss();
-  // gx = IMU.getGyroX_rads();
-  // gy = IMU.getGyroY_rads();
-  // gz = IMU.getGyroZ_rads();
-  // mx = IMU.getMagX_uT();
-  // my = IMU.getMagY_uT();
-  // mz = IMU.getMagZ_uT();
-  // temp = IMU.getTemperature_C();
-  deltat = fusion.deltatUpdate();
-  //fusion.MahonyUpdate(gx, gy, gz, ax, ay, az, mx, my, mz, deltat);  //mahony is suggested if there isn't the mag
-  //fusion.MadgwickUpdate(gx, gy, gz, ax, ay, az, mx, my, mz, deltat);  //else use the magwick
-  
-  
-  double x = magnetometerData.magnetic.x;
- // Serial.println(x);
-  //roll = fusion.getRoll();
-  // = fusion.getPitch();
-  // = fusion.getYaw();
-  //return yaw;
-  return headingVel;
 }
 
-// float getCompassHeading(){
-//   float sum = 0.0;
-//   xyzFloat gValue = myMPU6500.getGValues();
-//   xyzFloat gyr = myMPU6500.getGyrValues();
-//   xyzFloat magValue = myMPU6500.getMagValues();
-//   float temp = myMPU6500.getTemperature();
-//   float resultantG = myMPU6500.getResultantG(gValue);
-//   previous_compassheading = compassheading;
-//   // Calculate heading
-//   float heading = atan2(magValue.y, magValue.x);
-//   headingraw = heading;
-//   //float heading = atan2(event.magnetic.y, event.magnetic.x);
-//   float declinationAngle = config.declAngleRad;
-//   heading += declinationAngle;
-  
-//   // Correct for heading < 0deg and heading > 360deg
-//   if (heading < 0){
-//     heading += 2.0 * PI;
-//   }
+void readGyro(){
 
-//   if (heading > 2.0 * PI){
-//     heading -= 2.0 * PI;
-//   }
-//   // Convert to degrees
-//   float headingDegrees = heading * 180.0/M_PI;
-//   if(caldata.compassOffset >= 0){
-//     if(headingDegrees < caldata.compassOffset){
-//       headingDegrees = headingDegrees - caldata.compassOffset + 360.0;
-//     }else{
-//       headingDegrees = headingDegrees - caldata.compassOffset;
-//     }
-//   }else{
-//       headingDegrees = headingDegrees + (-1.0 * caldata.compassOffset);
-//       if(headingDegrees >= 360)
-//       {
-//           headingDegrees = headingDegrees - 360;
-//       }
-//   }
-//   return headingDegrees;
-// }
+}
+
+void readAccel(){
+
+}
+
+float readCompass(){
+  return 0.0;
+}

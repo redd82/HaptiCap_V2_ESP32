@@ -7,6 +7,8 @@ extern int secs;
 extern String GPSTimeMinsSecs;
 extern String GPSTimeMins;
 extern String GPSDate;
+extern float flCurrentLat;
+extern float flCurrentLon;
 extern int day;
 extern int month;
 extern int year;
@@ -69,6 +71,14 @@ String getGPSDate(){
   year = gps.date.year();
   GPSDate = String(year) + "-" + String(month) + "-" + String(day);
   return GPSDate;
+}
+
+void getGPSData(){
+    sensorData.gpsTime = gps.time.value();
+    sensorData.ownLat = gps.location.lat();
+    flCurrentLat = gps.location.lat();
+    sensorData.ownLon = gps.location.lng();
+    flCurrentLon = gps.location.lng();
 }
 
 unsigned long distance2waypoint(float waypoint_latt, float waypoint_long){ 

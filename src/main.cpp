@@ -5,8 +5,9 @@
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
+#include <Adafruit_LIS3MDL.h>
+#include <Adafruit_LSM6DS3TRC.h>
 #include <Adafruit_Sensor.h>
-#include <Adafruit_BNO055.h>
 #include "SensorFusion.h" //SF
 #include <string>
 
@@ -61,6 +62,7 @@ JsonDocument waypointsMapsDoc;
 JsonArray maps = mapListDoc["maps"].to<JsonArray>();
 JsonArray mapWaypoints = waypointsMapsDoc["mapWaypoints"].to<JsonArray>();
 
+// _Structs_
 Config config;                         // <- global configuration object
 CalData caldata;
 DebugSettings debugSettings;
@@ -198,10 +200,11 @@ void IRAM_ATTR onTimer2(){
   portEXIT_CRITICAL_ISR(&timer2Mux);
 }
 
-// Make sensor and server objects
+// Make objects
 TinyGPSPlus gps;
 TinyGPSCustom fix(gps, "GPGSA", 2);
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x29);
+Adafruit_LIS3MDL lis3mdl;
+Adafruit_LSM6DS3TRC lsm6ds3strc;                     //LSM6DS3TRC
 SF fusion;
 WiFiClient serverClients[MAX_SRV_CLIENTS];
 AsyncWebServer webServer(config.http_port);
@@ -270,11 +273,7 @@ void updateSensorData(){
   } else {
     smartDelay(50);
     String temp;
-    sensorData.gpsTime = gps.time.value();
-    sensorData.ownLat = gps.location.lat();
-    flCurrentLat = gps.location.lat();
-    sensorData.ownLon = gps.location.lng();
-    flCurrentLon = gps.location.lng();
+    getGPSData();
     temp = TinyGPSPlus::cardinal(sensorData.compassHeading);
     temp.toCharArray(sensorData.compassCardinal,8);
     sensorData.relheadingHomeBase = CalcRelHeading(compassheading, sensorData.homeBaseBearing);
@@ -290,7 +289,6 @@ void updateSensorData(){
     sensorData.nrOfSatellites = gps.satellites.value();
     getGPSTimeMins();
     saveSensorDataToJSON();
-    //checkGPSFix();
   }
 
   if (fix.isUpdated()){
@@ -347,26 +345,6 @@ void timerSetup(){
   //timerStart(timer2);  
 }
 
-String get_wifi_status(int status){
-    switch(status){
-        case WL_IDLE_STATUS:
-        return "WL_IDLE_STATUS";
-        case WL_SCAN_COMPLETED:
-        return "WL_SCAN_COMPLETED";
-        case WL_NO_SSID_AVAIL:
-        return "WL_NO_SSID_AVAIL";
-        case WL_CONNECT_FAILED:
-        return "WL_CONNECT_FAILED";
-        case WL_CONNECTION_LOST:
-        return "WL_CONNECTION_LOST";
-        case WL_CONNECTED:
-        return "WL_CONNECTED";
-        case WL_DISCONNECTED:
-        return "WL_DISCONNECTED";
-    }
-    return "UNKNOWN_STATUS";
-}
-
 void ioSetup(){
 // Initialize outputs
   //pinMode(led, OUTPUT);
@@ -400,6 +378,10 @@ void littleFSSetup(){
 }
 
 void haptiCapReady(){
+  Serial.print("IP address: ");
+  Serial.println(ipAddress);
+  Serial.print("Host address: ");
+  Serial.println(hostAddress);
   Serial.print("HaptiCap ready @ ");
   Serial.print(getCpuFrequencyMhz());
   Serial.println(" MHz");
@@ -437,24 +419,11 @@ void setup(){
   ioSetup();
   timerSetup();
   PWMSetup();
+  wireScan();
+  compassSetup();
   loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
-  Serial.println("Compass setup...");
-  compassSetup();
-  delay(1000);
-
-  if(!asAP){
-    Serial.print("IP address: ");
-    Serial.println(ipAddress);
-    Serial.print("Host address: ");
-    Serial.println(hostAddress);
-    }else{
-      Serial.print("IP address: ");
-      Serial.println(ipAddress);
-      Serial.print("Host address: ");
-      Serial.println(hostAddress);
-    }
-    getInitialReadings();
+  getInitialReadings();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
   readAllMapsFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str());
   ElegantOTA.setAutoReboot(false);
@@ -468,11 +437,6 @@ void loop(){
   if(debugSettings.debugGPS2Serial){
     smartDelay(50);
   }else{
-    if(!caldata.compassCalibrated){
-      calibrateCompass();
-      saveCalibrationDataToJSON();
-      saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
-    }
 
   // Start of main code.
     if(timers_disabled){
@@ -493,7 +457,8 @@ void loop(){
       portENTER_CRITICAL(&timer1Mux);
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
-      sensorData.compassHeading = readCompass();
+      //sensorData.compassHeading = readCompass();
+      //readCompass();
       if(interrupt1 > 10){
         interrupt1 = 2;
       }                 

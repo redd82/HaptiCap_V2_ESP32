@@ -16,5 +16,5 @@ extern int intCounterWifi;
 
 void saveConfiguration(FS &fs, const char * path);
 void wifiSetup();
-
+String get_wifi_status(int status);
 #endif
