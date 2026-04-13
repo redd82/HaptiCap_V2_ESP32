@@ -67,6 +67,28 @@ float psi;
 float dt;
 unsigned long millisOld;
 
+// ── Low-pass filter for heading output ───────────────────────────────────────
+// Alpha controls smoothing: lower = smoother but slower response.
+// At ~100 ms call period, 0.12 gives roughly a 700 ms time constant.
+static const float HEADING_ALPHA = 0.12f;
+static float filteredHeading = -1.0f;   // negative = uninitialized sentinel
+
+// Wraparound-safe exponential moving average for circular angles.
+static float headingLowPass(float newVal) {
+    if (filteredHeading < 0.0f) {
+        filteredHeading = newVal;
+        return filteredHeading;
+    }
+    float delta = newVal - filteredHeading;
+    if      (delta >  180.0f) delta -= 360.0f;
+    else if (delta < -180.0f) delta += 360.0f;
+    filteredHeading += HEADING_ALPHA * delta;
+    if      (filteredHeading <   0.0f) filteredHeading += 360.0f;
+    else if (filteredHeading >= 360.0f) filteredHeading -= 360.0f;
+    return filteredHeading;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 void setupLis3md(){
     if (! lis3mdl.begin_I2C()) { 
       Serial.println("Failed to find LIS3MDL chip");
@@ -241,159 +263,6 @@ void calibrateGyroHardIron(){
   delay(3000);
 }
 
-void motionCal(){
-  while(1){
-  lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
-  lis3mdl.getEvent(&mag_event);
-  Serial.print("Raw:");
-  Serial.print(int(accel_event.acceleration.x*8192/9.8)); Serial.print(",");
-  Serial.print(int(accel_event.acceleration.y*8192/9.8)); Serial.print(",");
-  Serial.print(int(accel_event.acceleration.z*8192/9.8)); Serial.print(",");
-  Serial.print(int(gyro_event.gyro.x*SENSORS_RADS_TO_DPS*16)); Serial.print(",");
-  Serial.print(int(gyro_event.gyro.y*SENSORS_RADS_TO_DPS*16)); Serial.print(",");
-  Serial.print(int(gyro_event.gyro.z*SENSORS_RADS_TO_DPS*16)); Serial.print(",");
-  Serial.print(int(mag_event.magnetic.x*10)); Serial.print(",");
-  Serial.print(int(mag_event.magnetic.y*10)); Serial.print(",");
-  Serial.print(int(mag_event.magnetic.z*10)); Serial.println("");
-  loopcount++;
-  receiveCalibration();
-
-  if (loopcount == 50 || loopcount > 100) {
-    Serial.print("Cal1:");
-    Serial.print(caldata.accelOffsetX, 3); 
-    Serial.print(",");
-    Serial.print(caldata.accelOffsetY, 3); 
-    Serial.print(",");
-    Serial.print(caldata.accelOffsetZ, 3); 
-    Serial.print(",");
-
-    Serial.print(caldata.gyroOffsetX, 3);
-    Serial.print(",");
-    Serial.print(caldata.gyroOffsetY, 3);
-    Serial.print(",");
-    Serial.print(caldata.gyroOffsetZ, 3);      
-    Serial.print(",");
-  
-    Serial.print(caldata.magOffsetX, 3); 
-    Serial.print(",");
-    Serial.print(caldata.magOffsetY, 3); 
-    Serial.print(",");
-    Serial.print(caldata.magOffsetZ, 3); 
-    Serial.print(",");            
-
-    Serial.println(caldata.magField, 3);
-    loopcount++;
-  }
-  if (loopcount >= 100) {
-    Serial.print("Cal2:");
-    for (int i=0; i<9; i++) {
-      Serial.print(cal.mag_softiron[i], 4); 
-      if (i < 8) Serial.print(',');
-    }
-    Serial.println();
-    loopcount = 0;
-  }
-
-  delay(10); 
-  }
-}
-
-void receiveCalibration() {
-  uint16_t crc;
-  byte b, i;
-
-  while (Serial.available()) {
-    b = Serial.read();
-    if (calcount == 0 && b != 117) {
-      // first byte must be 117
-      return;
-    }
-    if (calcount == 1 && b != 84) {
-      // second byte must be 84
-      calcount = 0;
-      return;
-    }
-    // store this byte
-    calDataBuffer[calcount++] = b;
-    if (calcount < 68) {
-      // full calibration message is 68 bytes
-      return;
-    }
-    // verify the crc16 check
-    crc = 0xFFFF;
-    for (i=0; i < 68; i++) {
-      crc = crc16_update(crc, calDataBuffer[i]);
-    }
-    if (crc == 0) {
-      // data looks good, use it
-      float offsets[16];
-      memcpy(offsets, calDataBuffer+2, 16*4);
-      cal.accel_zerog[0] = offsets[0];
-      cal.accel_zerog[1] = offsets[1];
-      cal.accel_zerog[2] = offsets[2];
-      
-      cal.gyro_zerorate[0] = offsets[3];
-      cal.gyro_zerorate[1] = offsets[4];
-      cal.gyro_zerorate[2] = offsets[5];
-      
-      cal.mag_hardiron[0] = offsets[6];
-      cal.mag_hardiron[1] = offsets[7];
-      cal.mag_hardiron[2] = offsets[8];
-
-      cal.mag_field = offsets[9];
-      
-      cal.mag_softiron[0] = offsets[10];
-      cal.mag_softiron[1] = offsets[13];
-      cal.mag_softiron[2] = offsets[14];
-      cal.mag_softiron[3] = offsets[13];
-      cal.mag_softiron[4] = offsets[11];
-      cal.mag_softiron[5] = offsets[15];
-      cal.mag_softiron[6] = offsets[14];
-      cal.mag_softiron[7] = offsets[15];
-      cal.mag_softiron[8] = offsets[12];
-
-      if (! cal.saveCalibration()) {
-        Serial.println("**WARNING** Couldn't save calibration");
-      } else {
-        Serial.println("Wrote calibration");    
-      }
-      cal.printSavedCalibration();
-      calcount = 0;
-      return;
-    }
-    // look for the 117,84 in the data, before discarding
-    for (i=2; i < 67; i++) {
-      if (calDataBuffer[i] == 117 && calDataBuffer[i+1] == 84) {
-        // found possible start within data
-        calcount = 68 - i;
-        memmove(calDataBuffer, calDataBuffer + i, calcount);
-        return;
-      }
-    }
-    // look for 117 in last byte
-    if (calDataBuffer[67] == 117) {
-      calDataBuffer[0] = 117;
-      calcount = 1;
-    } else {
-      calcount = 0;
-    }
-  }
-}
-
-uint16_t crc16_update(uint16_t crc, uint8_t a)
-{
-  int i;
-  crc ^= a;
-  for (i = 0; i < 8; i++) {
-    if (crc & 1) {
-      crc = (crc >> 1) ^ 0xA001;
-    } else {
-      crc = (crc >> 1);
-    }
-  }
-  return crc;
-}
-
 void setup_sensors(void) { //lis3md lsm6ds3strc
   setupLis3md();
   setupLsm6ds3strc();
@@ -401,6 +270,8 @@ void setup_sensors(void) { //lis3md lsm6ds3strc
 }
 
 void compassSetup(){
+  millisOld = millis();
+  filteredHeading = -1.0f;
   setup_sensors();
 }
 
@@ -416,17 +287,74 @@ bool calibrateCompass(){
 }
 
 void readMag(){
-
+  lis3mdl.getEvent(&mag_event);
 }
 
 void readGyro(){
-
+  lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
 }
 
 void readAccel(){
-
+  // accel_event is populated together with gyro in readGyro()
 }
 
-float readCompass(){
-  return 0.0;
+float readCompass() {
+    // ── 1. Read raw sensor data ───────────────────────────────────────────────
+    lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
+    lis3mdl.getEvent(&mag_event);
+
+    // ── 2. Compute timestep (clamp to sane range) ────────────────────────────
+    unsigned long now = millis();
+    dt = (now - millisOld) * 0.001f;
+    millisOld = now;
+    if (dt <= 0.0f || dt > 1.0f) dt = 0.01f;
+
+    // ── 3. Gyro: subtract zero-rate bias (rad/s) ─────────────────────────────
+    gx = gyro_event.gyro.x - caldata.gyroOffsetX;
+    gy = gyro_event.gyro.y - caldata.gyroOffsetY;
+    gz = gyro_event.gyro.z - caldata.gyroOffsetZ;
+
+    // ── 4. Accelerometer: subtract bias (m/s²) ───────────────────────────────
+    ax = accel_event.acceleration.x - caldata.accelOffsetX;
+    ay = accel_event.acceleration.y - caldata.accelOffsetY;
+    az = accel_event.acceleration.z - caldata.accelOffsetZ;
+
+    // ── 5. Magnetometer: hard-iron then soft-iron correction ─────────────────
+    float mx_raw = mag_event.magnetic.x - caldata.magOffsetX;
+    float my_raw = mag_event.magnetic.y - caldata.magOffsetY;
+    float mz_raw = mag_event.magnetic.z - caldata.magOffsetZ;
+    // magSoftIron is a row-major 3x3 matrix (identity by default = no effect)
+    mx = caldata.magSoftIron[0]*mx_raw + caldata.magSoftIron[1]*my_raw + caldata.magSoftIron[2]*mz_raw;
+    my = caldata.magSoftIron[3]*mx_raw + caldata.magSoftIron[4]*my_raw + caldata.magSoftIron[5]*mz_raw;
+    mz = caldata.magSoftIron[6]*mx_raw + caldata.magSoftIron[7]*my_raw + caldata.magSoftIron[8]*mz_raw;
+
+    // ── 6. Mahony AHRS: fuse gyro + accel + mag ──────────────────────────────
+    // Produces a stable quaternion-tracked orientation referenced to mag north.
+    fusion.MahonyUpdate(gx, gy, gz, ax, ay, az, mx, my, mz, dt);
+
+    // ── 7. Tilt-compensated heading from fused pitch/roll + corrected mag ─────
+    // Using the geometric formulation keeps heading independent of the filter's
+    // yaw initialisation; pitch/roll stabilise after ~1-2 seconds.
+    float pitchRad = fusion.getPitch() * (float)DEG_2_RAD;
+    float rollRad  = fusion.getRoll()  * (float)DEG_2_RAD;
+
+    float cosPitch = cosf(pitchRad);
+    float sinPitch = sinf(pitchRad);
+    float cosRoll  = cosf(rollRad);
+    float sinRoll  = sinf(rollRad);
+
+    // Project the corrected mag vector into the horizontal plane.
+    Xm =  mx * cosPitch + mz * sinPitch;
+    Ym =  mx * sinRoll * sinPitch + my * cosRoll - mz * sinRoll * cosPitch;
+
+    psi = atan2f(-Ym, Xm) * (180.0f / M_PI);
+
+    // ── 8. Apply declination offset and normalise to [0, 360) ────────────────
+    psi += caldata.compassOffset;
+    if      (psi <   0.0f) psi += 360.0f;
+    else if (psi >= 360.0f) psi -= 360.0f;
+
+    // ── 9. Smooth output to suppress high-frequency jitter ───────────────────
+    compassheading = headingLowPass(psi);
+    return compassheading;
 }

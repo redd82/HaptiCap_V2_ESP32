@@ -119,6 +119,8 @@ touch_pad_t touchPin;
 int touchValueT0;
 int touchValueT3;
 
+static const char *kLittleFSPartitionLabel = "littlefs";
+
 bool bPrintHeader = false;
 int count = 0;
 int i = 0;
@@ -363,9 +365,9 @@ void ioSetup(){
 void littleFSSetup(){
   // Initialize LittleFS
     delay(1000);
-  if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+  if (!LittleFS.begin(false /* false: Do not format if mount failed */, "/littlefs", 10, kLittleFSPartitionLabel)) {
     Serial.println("Failed to mount LittleFS");
-    if (!LittleFS.begin(true /* true: format */)) {
+    if (!LittleFS.begin(true /* true: format */, "/littlefs", 10, kLittleFSPartitionLabel)) {
       Serial.println("Failed to format LittleFS");
     } else {
       Serial.println("LittleFS formatted successfully");
@@ -457,8 +459,8 @@ void loop(){
       portENTER_CRITICAL(&timer1Mux);
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
-      //sensorData.compassHeading = readCompass();
-      //readCompass();
+      sensorData.compassHeading = readCompass();
+      compassheading = sensorData.compassHeading;
       if(interrupt1 > 10){
         interrupt1 = 2;
       }                 

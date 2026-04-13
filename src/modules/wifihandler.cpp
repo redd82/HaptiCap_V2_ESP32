@@ -1,4 +1,4 @@
-#include "WiFiHandler.h"
+#include "wifihandler.h"
 
 String get_wifi_status(int status){
     switch(status){

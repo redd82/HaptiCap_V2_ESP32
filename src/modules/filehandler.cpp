@@ -476,21 +476,22 @@ void IRAM_ATTR loadSensorData(fs::FS &fs, const char * path, SensorData &sensorD
 // map management
 String prepMapNameForMapDB(String fileName){
   String response = "";
-    if(fileName.endsWith(".png")){
-      uploadedPNGFile = fileName;
-    }else if (fileName.endsWith(".kml")){
-      uploadedKMLFile = fileName;
-    if(debugSettings.debug2Serial){
-      Serial.println(uploadedPNGFile + " uploaded.");
-      Serial.println(uploadedKMLFile + " uploaded.");
-    }
-      response = "Files uploaded.";
-    }else{
-      Serial.println("Wrong type of file.");
-      deleteFile(LittleFS, fileName.c_str());
-      response = "Wrong filetype.";
-    }
-    return response; 
+  if(fileName.endsWith(".png")){
+    uploadedPNGFile = fileName;
+    response = "PNG file uploaded.";
+  }else if (fileName.endsWith(".kml")){
+    uploadedKMLFile = fileName;
+    response = "KML file uploaded.";
+  }else{
+    Serial.println("Wrong type of file.");
+    deleteFile(LittleFS, fileName.c_str());
+    response = "Wrong filetype.";
+  }
+  if(debugSettings.debug2Serial){
+    Serial.println(uploadedPNGFile + " PNG file.");
+    Serial.println(uploadedKMLFile + " KML file.");
+  }
+  return response; 
 }
 
 // Not used
@@ -503,15 +504,15 @@ void putJSONSelectedMapInMemory(JsonObject map) {
   String temp = map["name"];
   temp.toCharArray(selectedMap.map_name, 32);
   String temp2 = map["area"];
-  temp.toCharArray(selectedMap.map_area, 32);
+  temp2.toCharArray(selectedMap.map_area, 32);
   String temp3 = map["country"];
-  temp.toCharArray(selectedMap.map_country, 64);
+  temp3.toCharArray(selectedMap.map_country, 64);
   String temp4 = map["pngFile"];
-  temp.toCharArray(selectedMap.map_pngFile, 32);
+  temp4.toCharArray(selectedMap.map_pngFile, 32);
   selectedMap.imageWidth = map["imageWidth"];
   selectedMap.imageHeight = map["imageHeight"];
   String temp5 = map["kmlFile"];
-  temp.toCharArray(selectedMap.map_kmlFile, 32);
+  temp5.toCharArray(selectedMap.map_kmlFile, 32);
   selectedMap.realWorldHeight = map["realWorldHeight"];
   selectedMap.realWorldWidth = map["realWorldWidth"];
   selectedMap.scaleHeight = map["scaleHeight"];
