@@ -159,6 +159,8 @@ void plotterDataGyroAccelMag(){
 }
 
 void calibrateMagHardIron(){
+  // Re-init magnetometer right before calibration to ensure it is in continuous mode.
+  setupLis3md();
   Serial.println(F("Move the sensor in a figure 8 until done!"));
   Serial.print(F("Fetching samples in 3..."));
   delay(1000);
@@ -167,17 +169,48 @@ void calibrateMagHardIron(){
   Serial.print("1...");
   delay(1000);
   Serial.println("NOW!");
+
+  // Reset extrema for a fresh calibration run.
+  lis3mdl.getEvent(&mag_event);
+  magData.min_x = magData.max_x = mag_event.magnetic.x;
+  magData.min_y = magData.max_y = mag_event.magnetic.y;
+  magData.min_z = magData.max_z = mag_event.magnetic.z;
+
+  float prevX = mag_event.magnetic.x;
+  float prevY = mag_event.magnetic.y;
+  float prevZ = mag_event.magnetic.z;
+  int stagnantSamples = 0;
+  bool stagnantWarned = false;
+
   int i = 0;
   while(i < calSamples){
+    delay(20);
     lis3mdl.getEvent(&mag_event);
     float x = mag_event.magnetic.x;
     float y = mag_event.magnetic.y;
     float z = mag_event.magnetic.z;
 
-    Serial.print("Mag: (");
-    Serial.print(x); Serial.print(", ");
-    Serial.print(y); Serial.print(", ");
-    Serial.print(z); Serial.print(")");
+    float delta = fabsf(x - prevX) + fabsf(y - prevY) + fabsf(z - prevZ);
+    if (delta < 0.01f) {
+      stagnantSamples++;
+    } else {
+      stagnantSamples = 0;
+      stagnantWarned = false;
+    }
+    if (stagnantSamples > 50 && !stagnantWarned) {
+      Serial.println(F("WARNING: Magnetometer samples appear static. Check sensor wiring/power and movement."));
+      stagnantWarned = true;
+    }
+    prevX = x;
+    prevY = y;
+    prevZ = z;
+
+    Serial.print("Mag raw[");
+    Serial.print(i);
+    Serial.print("]: (");
+    Serial.print(x, 4); Serial.print(", ");
+    Serial.print(y, 4); Serial.print(", ");
+    Serial.print(z, 4); Serial.print(")");
 
     magData.min_x = min(magData.min_x, x);
     magData.min_y = min(magData.min_y, y);
@@ -191,14 +224,14 @@ void calibrateMagHardIron(){
     magData.mid_y = (magData.max_y + magData.min_y) / 2;
     magData.mid_z = (magData.max_z + magData.min_z) / 2;
     Serial.print(" Hard offset: (");
-    Serial.print(magData.mid_x); Serial.print(", ");
-    Serial.print(magData.mid_y); Serial.print(", ");
-    Serial.print(magData.mid_z); Serial.print(")");  
+    Serial.print(magData.mid_x, 4); Serial.print(", ");
+    Serial.print(magData.mid_y, 4); Serial.print(", ");
+    Serial.print(magData.mid_z, 4); Serial.print(")");  
 
     Serial.print(" Field: (");
-    Serial.print((magData.max_x - magData.min_x)/2); Serial.print(", ");
-    Serial.print((magData.max_y - magData.min_y)/2); Serial.print(", ");
-    Serial.print((magData.max_z - magData.min_z)/2); Serial.println(")");
+    Serial.print((magData.max_x - magData.min_x)/2, 4); Serial.print(", ");
+    Serial.print((magData.max_y - magData.min_y)/2, 4); Serial.print(", ");
+    Serial.print((magData.max_z - magData.min_z)/2, 4); Serial.println(")");
     i++;    
     delay(10); 
   }
@@ -218,6 +251,13 @@ void calibrateGyroHardIron(){
   Serial.print("1...");
   delay(1000);
   Serial.println("NOW!");
+
+  // Seed extrema from the first reading to avoid uninitialized min/max state.
+  lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
+  gyroData.min_x = gyroData.max_x = gyro_event.gyro.x;
+  gyroData.min_y = gyroData.max_y = gyro_event.gyro.y;
+  gyroData.min_z = gyroData.max_z = gyro_event.gyro.z;
+
   float x, y, z;
   for (uint16_t sample = 0; sample < calSamples; sample++) {
     lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
@@ -282,6 +322,8 @@ bool calibrateCompass(){
     caldata.compassCalibrated = true;
     saveCalibrationDataToJSON();
     saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
+  } else {
+    Serial.println(F("Compass calibration skipped (compassCalibrated=true)"));
   }
   return false;
 }
@@ -347,7 +389,8 @@ float readCompass() {
     Xm =  mx * cosPitch + mz * sinPitch;
     Ym =  mx * sinRoll * sinPitch + my * cosRoll - mz * sinRoll * cosPitch;
 
-    psi = atan2f(-Ym, Xm) * (180.0f / M_PI);
+    // Use right-handed heading sign so clockwise rotation increases degrees.
+    psi = atan2f(Ym, Xm) * (180.0f / M_PI);
 
     // ── 8. Apply declination offset and normalise to [0, 360) ────────────────
     psi += caldata.compassOffset;

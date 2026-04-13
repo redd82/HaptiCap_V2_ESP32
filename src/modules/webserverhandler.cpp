@@ -1,4 +1,5 @@
 #include "webserverhandler.h"
+#include "compass.h"
 
 extern AsyncWebServer webServer;
 extern TinyGPSPlus gps;
@@ -34,6 +35,7 @@ extern String fileConfigJSON;
 extern String fileDebugJSON;
 extern String fileMapDataJSON;
 extern String fileSensorDataJSON;
+extern bool runCompassCalibrationRequested;
 
 String str2HTML;
 unsigned long ota_progress_millis = 0;
@@ -252,6 +254,28 @@ void webServerSetup(){
           {
               JsonObject obj = calDataDoc.as<JsonObject>();
               putJSONCalibrationDataInMemory();
+
+              bool forceCompassCalibration = false;
+              if (obj["compassCalibrationMode"].is<bool>()) {
+                forceCompassCalibration = obj["compassCalibrationMode"].as<bool>();
+              } else if (obj["compassCalibrationMode"].is<const char*>()) {
+                String mode = obj["compassCalibrationMode"].as<String>();
+                mode.toLowerCase();
+                forceCompassCalibration = (mode == "1" || mode == "true" || mode == "calibrate" || mode == "calibratecompass");
+              }
+
+              if (forceCompassCalibration) {
+                caldata.compassCalibrated = false;
+                Serial.println(F("Calibration API: forced compass recalibration requested"));
+              }
+
+              if (!caldata.compassCalibrated) {
+                runCompassCalibrationRequested = true;
+                Serial.println(F("Calibration API: queued runtime compass calibration"));
+              } else {
+                Serial.println(F("Calibration API: skipped runtime calibration (already calibrated)"));
+              }
+
               saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
           }
           request->send(200, "application/json", "{ \"status\": 0 }");

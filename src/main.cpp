@@ -172,6 +172,7 @@ bool bDebugHomeReached = 0;
 int GPSFix = 0;
 bool GPSFixAccepted = 0;
 bool compassCalibrated = false;
+bool runCompassCalibrationRequested = false;
 bool asAP = true;
 bool startup = false;
 bool enableLed0;
@@ -421,9 +422,9 @@ void setup(){
   ioSetup();
   timerSetup();
   PWMSetup();
+  loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   wireScan();
   compassSetup();
-  loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
   getInitialReadings();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
@@ -436,6 +437,19 @@ void setup(){
 }
 
 void loop(){
+  if (runCompassCalibrationRequested) {
+    Serial.println(F("Runtime compass calibration starting..."));
+    runCompassCalibrationRequested = false;
+    if (timer0 != NULL) timerStop(timer0);
+    if (timer1 != NULL) timerStop(timer1);
+    if (timer2 != NULL) timerStop(timer2);
+    calibrateCompass();
+    if (timer0 != NULL) timerStart(timer0);
+    if (timer1 != NULL) timerStart(timer1);
+    if (timer2 != NULL) timerStart(timer2);
+    Serial.println(F("Runtime compass calibration completed."));
+  }
+
   if(debugSettings.debugGPS2Serial){
     smartDelay(50);
   }else{

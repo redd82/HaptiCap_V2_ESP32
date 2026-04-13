@@ -1,5 +1,5 @@
 {
-    "compassCalibrated": true,
+    "compassCalibrated": false,
     "compassOffset": "0.00",
     "magOffsetX": "-211",
     "magOffsetY": "-661",
