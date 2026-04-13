@@ -24,7 +24,7 @@ void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdat
 String prepMapNameForMapDB(String fileName);
 
 void readMapWaypointsFromJSON(fs::FS &fs, const char * path, int requestedMap);
-void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap);
+bool readMapFromJSON(fs::FS &fs, const char * path, int requestedMap);
 void saveSensorDataToJSON();
 void saveCalibrationDataToJSON();
 

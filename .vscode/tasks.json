@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Upload Filesystem Image (esp32dev)",
+			"type": "shell",
+			"command": "platformio",
+			"args": [
+				"run",
+				"--target",
+				"uploadfs",
+				"--environment",
+				"esp32dev"
+			],
+			"isBackground": false
+		}
+	]
+}

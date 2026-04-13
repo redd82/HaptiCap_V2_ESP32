@@ -583,15 +583,16 @@ void writeMapToJSON(fs::FS &fs, const char * path, int requestedMap, String name
   Serial.println("");
 }
 
-void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
+bool readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
   //Serial.println("Reading maps from mapData.json");
+  selectedMapDoc.clear();
   File file = fs.open(path, FILE_READ);
   DeserializationError error = deserializeJson(mapListDoc, file);
 
   if (error) {
     Serial.print("deserializeJson() failed: ");
     Serial.println(error.c_str());
-    return;
+    return false;
   }
 
   for (JsonObject map : mapListDoc["maps"].as<JsonArray>()) {
@@ -615,8 +616,11 @@ void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap){
       selectedMapDoc["east"] = map["east"];
       selectedMapDoc["rotation"] = map["rotation"];
       selectedMapDoc["radius"] = map["radius"];
+      return true;
     }
   }
+
+  return false;
 }
 
 void IRAM_ATTR readAllMapsFromJSON(fs::FS &fs, const char * path){

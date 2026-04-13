@@ -38,6 +38,15 @@ extern String fileSensorDataJSON;
 String str2HTML;
 unsigned long ota_progress_millis = 0;
 
+static String normalizeUploadedFileName(String fileName) {
+  fileName.replace("\\", "/");
+  int slashIndex = fileName.lastIndexOf('/');
+  if (slashIndex >= 0) {
+    fileName = fileName.substring(slashIndex + 1);
+  }
+  return fileName;
+}
+
 // Replaces placeholder with value for webserver
 String processor(const String& var){
   if(var == "JSFILE"){
@@ -79,17 +88,18 @@ void onOTAEnd(bool success) {
 
 void handleUpload(AsyncWebServerRequest *request, String filenameLocal, size_t index, uint8_t *data, size_t len, bool final){
   String response = "";
+  String safeFileName = normalizeUploadedFileName(filenameLocal);
   if (!index) {
-    String fileForDeletion = mapsDir + "/" + filenameLocal;
+    String fileForDeletion = mapsDir + "/" + safeFileName;
     LittleFS.rename(fileForDeletion.c_str(), "/maps/temp.png");
-    request->_tempFile = LittleFS.open(mapsDir + "/" + filenameLocal, "w");
+    request->_tempFile = LittleFS.open(mapsDir + "/" + safeFileName, "w");
   }
   if (len) {
     request->_tempFile.write(data, len);
   }
   if (final) {
     request->_tempFile.close();
-    response = prepMapNameForMapDB(filenameLocal);
+    response = prepMapNameForMapDB(safeFileName);
     request->send(200, "application/json", response );
     LittleFS.remove("/maps/temp.png");
     listDir(LittleFS, mapsDir.c_str(), 0);
@@ -116,15 +126,27 @@ void webServerSetup(){
     }
   );
 
-  webServer.on("^\\/maps\\/([a-zA-Z0-9_]+.[A-Za-z]{3})$", HTTP_GET, [] (AsyncWebServerRequest *request) {
+  webServer.on("^\\/maps\\/(.+)$", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String mapFile = request->pathArg(0);
-     if(mapFile.endsWith(".png")){
-      request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "image/png");
-     }else if(mapFile.endsWith(".kml")){
-      request->send(LittleFS, (mapsDir + "/" + mapFile).c_str(), "application/vnd.google-earth.kml+xml");
-     }else{
-      request->send(200, "application/json", "{ \"status\": No png or kml file requested }");
-     }
+    if (mapFile.startsWith("/")) {
+      mapFile.remove(0, 1);
+    }
+
+    String filePath = mapsDir + "/" + mapFile;
+    if(!LittleFS.exists(filePath.c_str())){
+      request->send(404, "application/json", "{ \"error\": \"Map file not found\" }");
+      return;
+    }
+
+    String mapFileLower = mapFile;
+    mapFileLower.toLowerCase();
+    if(mapFileLower.endsWith(".png")){
+      request->send(LittleFS, filePath.c_str(), "image/png");
+    }else if(mapFileLower.endsWith(".kml")){
+      request->send(LittleFS, filePath.c_str(), "application/vnd.google-earth.kml+xml");
+    }else{
+      request->send(415, "application/json", "{ \"error\": \"Unsupported map file type\" }");
+    }
   });
 
   webServer.on("/navigation/map-list", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -189,11 +211,35 @@ void webServerSetup(){
     }
   );
 
-  webServer.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
-    {
+  auto handleJsonBody = [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) {
+        request->_tempObject = new String();
+        if (request->_tempObject == nullptr) {
+          request->send(500, "application/json", "{ \"error\": \"OOM\" }");
+          return;
+        }
+        reinterpret_cast<String*>(request->_tempObject)->reserve(total);
+      }
+
+      String *requestBody = reinterpret_cast<String*>(request->_tempObject);
+      if (requestBody != nullptr && data != nullptr && len > 0) {
+        requestBody->concat(reinterpret_cast<const char*>(data), len);
+      }
+
+      if ((index + len) < total) {
+        return;
+      }
+
+      String body = "";
+      if (requestBody != nullptr) {
+        body = *requestBody;
+        delete requestBody;
+        request->_tempObject = nullptr;
+      }
+
       if ((request->url() == "/settings/settings_form") && (request->method() == HTTP_POST))
       {
-          if (DeserializationError::Ok == deserializeJson(configDoc, (const char*)data))
+          if (DeserializationError::Ok == deserializeJson(configDoc, body))
           {
               JsonObject obj = configDoc.as<JsonObject>();
               putJSONConfigDataInMemory();
@@ -202,7 +248,7 @@ void webServerSetup(){
           request->send(200, "application/json", "{ \"status\": 0 }");
       } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
       {
-          if (DeserializationError::Ok == deserializeJson(calDataDoc, (const char*)data))
+          if (DeserializationError::Ok == deserializeJson(calDataDoc, body))
           {
               JsonObject obj = calDataDoc.as<JsonObject>();
               putJSONCalibrationDataInMemory();
@@ -211,7 +257,7 @@ void webServerSetup(){
           request->send(200, "application/json", "{ \"status\": 0 }");
       } else if ((request->url() == "/settings/debug_form") && (request->method() == HTTP_POST))
       {
-          if (DeserializationError::Ok == deserializeJson(debugSettingsDoc, (const char*)data))
+          if (DeserializationError::Ok == deserializeJson(debugSettingsDoc, body))
           {
               JsonObject obj = debugSettingsDoc.as<JsonObject>();
               putJSONDebugSettingsInMemory();
@@ -220,18 +266,17 @@ void webServerSetup(){
           request->send(200, "application/json", "{ \"status\": 0 }");
       } else if ((request->url() == "/navigation/register-map") && (request->method() == HTTP_POST))
       {
-          if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+          if (DeserializationError::Ok == deserializeJson(mapListDoc, body))
           {
               JsonObject obj = mapListDoc.as<JsonObject>();
               String pngFile = obj["pngFile"];
               String kmlFile = obj["kmlFile"]; 
-              // addMaptoDB(uploadedPNGFile, uploadedKMLFile, obj);
               addMaptoDB(pngFile, kmlFile, obj);
           }
           request->send(200, "application/json", "{ \"status\": 0 }");
       } else if ((request->url() == "/navigation/update-map") && (request->method() == HTTP_POST))
       {
-          if (DeserializationError::Ok == deserializeJson(mapListDoc, (const char*)data))
+          if (DeserializationError::Ok == deserializeJson(mapListDoc, body))
           {
               JsonObject obj = mapListDoc.as<JsonObject>();
               String pngFile = obj["pngFile"];
@@ -250,25 +295,37 @@ void webServerSetup(){
             }
               updateMaptoDB(pngFile, kmlFile, obj, pngUpdated, kmlUpdated);
           }
-          request->send(200, "application/json", "{ \"status\": 0 }");          
+          request->send(200, "application/json", "{ \"status\": 0 }");
       } else if ((request->url() == "/navigation/request-map") && (request->method() == HTTP_POST))
       {
-          String output = "{ \"status\": 0 }";
-          if (DeserializationError::Ok == deserializeJson(selectedMapDoc, (const char*)data))
-          {
-              JsonObject obj = selectedMapDoc.as<JsonObject>();
-              readMapFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), obj["id"]);
-              //putJSONSelectedMapInMemory(obj);
-              output = "";
-              serializeJson(selectedMapDoc, output);
-            if(debugSettings.debug2Serial){
-              Serial.println(selectedMap.map_pngFile);
-            }
+          JsonDocument requestMapDoc;
+          DeserializationError parseError = deserializeJson(requestMapDoc, body);
+          if (parseError) {
+            request->send(400, "application/json", "{ \"error\": \"Invalid request-map payload\", \"message\": \"Invalid request-map payload\" }");
+            return;
+          }
+
+          int requestedMapId = requestMapDoc["id"] | -1;
+          if (requestedMapId < 0) {
+            request->send(400, "application/json", "{ \"error\": \"Missing map id\", \"message\": \"Missing map id\" }");
+            return;
+          }
+
+          bool mapFound = readMapFromJSON(LittleFS, (jsonDir + fileMapDataJSON).c_str(), requestedMapId);
+          if (!mapFound || selectedMapDoc["pngFile"].isNull()) {
+            request->send(404, "application/json", "{ \"error\": \"Requested map not found\", \"message\": \"Requested map not found\" }");
+            return;
+          }
+
+          String output = "";
+          serializeJson(selectedMapDoc, output);
+          if(debugSettings.debug2Serial){
+            Serial.println(output);
           }
           request->send(200, "application/json", output);
       } else if ((request->url() == "/navigation/clear-map") && (request->method() == HTTP_POST))
       {
-          if (DeserializationError::Ok == deserializeJson(selectedMapDoc, (const char*)data))
+          if (DeserializationError::Ok == deserializeJson(selectedMapDoc, body))
           {
               JsonObject obj = selectedMapDoc.as<JsonObject>();
               String pngFile = obj["pngFile"];
@@ -278,9 +335,17 @@ void webServerSetup(){
               addMaptoDB("NoMap.png","NoMap.kml", obj);
           }
           request->send(200, "application/json", "{ \"status\": 0 }");
-      }     
-    }
-  );
+      }
+  };
+
+  // Register JSON POST endpoints with explicit body callbacks so requests are handled.
+  webServer.on("/settings/settings_form", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/settings/calibration_form", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/settings/debug_form", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/navigation/register-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/navigation/update-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/navigation/request-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/navigation/clear-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
 
   webServer.on(fileCss.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -436,6 +501,10 @@ void webServerSetup(){
   );
 
   webServer.on("/upload-file", HTTP_POST, [](AsyncWebServerRequest * request) {
+    request->send(200);
+  }, handleUpload);
+
+  webServer.on("/file-upload", HTTP_POST, [](AsyncWebServerRequest * request) {
     request->send(200);
   }, handleUpload);
 
