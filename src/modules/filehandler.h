@@ -30,6 +30,10 @@ void saveCalibrationDataToJSON();
 
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels);
 String printFreeSpace();
+String readFile(fs::FS &fs, const char * path);
+bool writeStringToFile(fs::FS &fs, const char * path, const String &content);
+bool writeBytesToFile(fs::FS &fs, const char * path, const uint8_t *data, size_t len);
+void createDir(fs::FS &fs, const char * path);
 void deleteFile(fs::FS &fs, const char * path);
 void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels);
 

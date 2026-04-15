@@ -15,6 +15,7 @@
 #include "modules/filehandler.h"
 #include "modules/webserverhandler.h"
 #include "modules/hapticfeedback.h"
+#include "modules/takhandler.h"
 #include "modules/wifihandler.h"
 #include "modules/compass.h"
 #include "modules/gps.h"
@@ -416,6 +417,7 @@ void setup(){
 
   littleFSSetup();
   loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+  setupTAK();
   loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
   wifiSetup();
   touchPadSetup();
@@ -494,4 +496,6 @@ void loop(){
 
     //ledTesting();
   }
+
+  serviceTAK(sensorData);
 }

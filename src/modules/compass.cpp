@@ -89,6 +89,12 @@ static float headingLowPass(float newVal) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+static void updateMagEvent() {
+  // Some LIS3MDL board variants never raise magneticFieldAvailable() reliably
+  // over I2C, so use direct event reads for robust sampling.
+  lis3mdl.getEvent(&mag_event);
+}
+
 void setupLis3md(){
     if (! lis3mdl.begin_I2C()) { 
       Serial.println("Failed to find LIS3MDL chip");
@@ -101,7 +107,7 @@ void setupLis3md(){
   lis3mdl.setPerformanceMode(LIS3MDL_MEDIUMMODE);
   lis3mdl.setOperationMode(LIS3MDL_CONTINUOUSMODE);
 
-  lis3mdl.getEvent(&mag_event);
+  updateMagEvent();
   magData.min_x = magData.max_x = mag_event.magnetic.x;
   magData.min_y = magData.max_y = mag_event.magnetic.y;
   magData.min_z = magData.max_z = mag_event.magnetic.z;
@@ -122,7 +128,7 @@ void setupLsm6ds3strc(){
 }
 
 void debugMag(){
-  lis3mdl.getEvent(&mag_event);
+  updateMagEvent();
   Serial.print("X: "); Serial.print(mag_event.magnetic.x); Serial.print(" uT\t");
   Serial.print("Y: "); Serial.print(mag_event.magnetic.y); Serial.print(" uT\t");
   Serial.print("Z: "); Serial.print(mag_event.magnetic.z); Serial.print(" uT\t");
@@ -144,7 +150,7 @@ void debugGyroAccel(){
 
 void plotterDataGyroAccelMag(){
   lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
-  lis3mdl.getEvent(&mag_event);
+  updateMagEvent();
   Serial.print(accel_event.acceleration.x); Serial.print(",");
   Serial.print(accel_event.acceleration.y); Serial.print(",");
   Serial.print(accel_event.acceleration.z); Serial.print(",");
@@ -171,7 +177,7 @@ void calibrateMagHardIron(){
   Serial.println("NOW!");
 
   // Reset extrema for a fresh calibration run.
-  lis3mdl.getEvent(&mag_event);
+  updateMagEvent();
   magData.min_x = magData.max_x = mag_event.magnetic.x;
   magData.min_y = magData.max_y = mag_event.magnetic.y;
   magData.min_z = magData.max_z = mag_event.magnetic.z;
@@ -185,7 +191,7 @@ void calibrateMagHardIron(){
   int i = 0;
   while(i < calSamples){
     delay(20);
-    lis3mdl.getEvent(&mag_event);
+    updateMagEvent();
     float x = mag_event.magnetic.x;
     float y = mag_event.magnetic.y;
     float z = mag_event.magnetic.z;
@@ -329,7 +335,7 @@ bool calibrateCompass(){
 }
 
 void readMag(){
-  lis3mdl.getEvent(&mag_event);
+  updateMagEvent();
 }
 
 void readGyro(){
@@ -343,7 +349,7 @@ void readAccel(){
 float readCompass() {
     // ── 1. Read raw sensor data ───────────────────────────────────────────────
     lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
-    lis3mdl.getEvent(&mag_event);
+    updateMagEvent();
 
     // ── 2. Compute timestep (clamp to sane range) ────────────────────────────
     unsigned long now = millis();

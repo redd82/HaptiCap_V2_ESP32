@@ -29,6 +29,23 @@ struct Config {
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = true;
   int selectedMap = 1;
+  bool takEnabled = false;
+  bool takSSL = true;
+  bool takVerifyCert = true;
+  bool takUseClientCert = true;
+  bool takConfigured = false;
+  bool takPackageImported = false;
+  char takServer[64] = "";
+  char takTLSServerName[64] = "";
+  uint16_t takPort = 8089;
+  char takCallsign[32] = "HaptiCap";
+  char takUID[48] = "";
+  char takDescription[96] = "";
+  char takCACertPath[64] = "/certs/tak_ca.crt";
+  char takClientCertPath[64] = "/certs/tak_client.crt";
+  char takClientKeyPath[64] = "/certs/tak_client.key";
+  char takClientP12Path[64] = "/certs/tak_client.p12";
+  char takTruststoreP12Path[64] = "/certs/truststore-root.p12";
 };
 
 #endif
