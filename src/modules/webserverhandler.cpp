@@ -1,5 +1,6 @@
 #include "webserverhandler.h"
 #include "compass.h"
+#include "takhandler.h"
 
 extern AsyncWebServer webServer;
 extern TinyGPSPlus gps;
@@ -206,6 +207,12 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/tak_enroll.html", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      request->send(LittleFS, "/tak_enroll.html", "text/html");
+    }
+  );
+
   webServer.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
@@ -359,6 +366,17 @@ void webServerSetup(){
               addMaptoDB("NoMap.png","NoMap.kml", obj);
           }
           request->send(200, "application/json", "{ \"status\": 0 }");
+          } else if ((request->url() == "/tak/config") && (request->method() == HTTP_POST))
+          {
+            JsonDocument takPatchDoc;
+            if (DeserializationError::Ok == deserializeJson(takPatchDoc, body))
+            {
+              mergeTAKConfigPatch(takPatchDoc);
+              saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
+              request->send(200, "application/json", "{ \"status\": 0 }");
+            } else {
+              request->send(400, "application/json", "{ \"error\": \"Invalid TAK config payload\" }");
+            }
       }
   };
 
@@ -370,6 +388,141 @@ void webServerSetup(){
   webServer.on("/navigation/update-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
   webServer.on("/navigation/request-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
   webServer.on("/navigation/clear-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/tak/config", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+
+  webServer.on("/tak/connect", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      takConnectRequested = true;
+      request->send(200, "application/json", "{ \"status\": 0 }");
+    }
+  );
+
+  webServer.on("/tak/disconnect", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      takDisconnectRequested = true;
+      request->send(200, "application/json", "{ \"status\": 0 }");
+    }
+  );
+
+  webServer.on("/tak/config", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      JsonDocument takConfigDoc;
+      takConfigDoc["takEnabled"] = config.takEnabled;
+      takConfigDoc["takSSL"] = config.takSSL;
+      takConfigDoc["takVerifyCert"] = config.takVerifyCert;
+      takConfigDoc["takPersistent"] = config.takPersistent;
+      takConfigDoc["takUDPEnabled"] = config.takUDPEnabled;
+      takConfigDoc["takServer"] = config.takServer;
+      takConfigDoc["takPort"] = config.takPort;
+      takConfigDoc["takUDPPort"] = config.takUDPPort;
+      takConfigDoc["takCallsign"] = config.takCallsign;
+      takConfigDoc["takUID"] = config.takUID;
+      takConfigDoc["takCotType"] = config.takCotType;
+      takConfigDoc["takIntervalSec"] = config.takIntervalSec;
+      takConfigDoc["takCACertPath"] = config.takCACertPath;
+      takConfigDoc["takEnrollPort"] = config.takEnrollPort;
+      takConfigDoc["takEnrollHost"] = config.takEnrollHost;
+      takConfigDoc["takEnrollUsername"] = config.takEnrollUsername;
+      takConfigDoc["takEnrollToken"] = config.takEnrollToken;
+      takConfigDoc["takAutoTokenFetch"] = config.takAutoTokenFetch;
+      takConfigDoc["takTokenApiPath"] = config.takTokenApiPath;
+      takConfigDoc["takTokenApiUsername"] = config.takTokenApiUsername;
+      takConfigDoc["takTokenApiPassword"] = config.takTokenApiPassword;
+      takConfigDoc["takUseClientCert"] = config.takUseClientCert;
+      takConfigDoc["takEnrollPath"] = config.takEnrollPath;
+      takConfigDoc["takClientCertPath"] = config.takClientCertPath;
+      takConfigDoc["takClientKeyPath"] = config.takClientKeyPath;
+      takConfigDoc["takClientP12Path"] = config.takClientP12Path;
+
+      String payload;
+      serializeJson(takConfigDoc, payload);
+      request->send(200, "application/json", payload);
+    }
+  );
+
+  webServer.on("/tak/status", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      JsonDocument statusDoc;
+      statusDoc["connected"] = isTAKConnected();
+      statusDoc["lastSendMs"] = getLastTAKSendMs();
+      statusDoc["uid"] = config.takUID;
+      statusDoc["enabled"] = config.takEnabled;
+
+      String payload;
+      serializeJson(statusDoc, payload);
+      request->send(200, "application/json", payload);
+    }
+  );
+
+  webServer.on("/tak/enrollment-qr-data", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      String uri = getTAKEnrollmentURI();
+      JsonDocument qrDoc;
+      qrDoc["host"] = (strlen(config.takEnrollHost) > 0) ? config.takEnrollHost : config.takServer;
+      qrDoc["username"] = config.takEnrollUsername;
+      qrDoc["token"] = config.takEnrollToken;
+      qrDoc["uri"] = uri;
+
+      String payload;
+      serializeJson(qrDoc, payload);
+      request->send(200, "application/json", payload);
+    }
+  );
+
+  webServer.on("/tak/enrollment-qr-token/refresh", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      String message;
+      bool ok = refreshTAKEnrollmentToken(message);
+      JsonDocument responseDoc;
+      responseDoc["status"] = ok ? 0 : 1;
+      responseDoc["message"] = message;
+      responseDoc["username"] = config.takEnrollUsername;
+      responseDoc["token"] = config.takEnrollToken;
+      responseDoc["uri"] = getTAKEnrollmentURI();
+
+      String payload;
+      serializeJson(responseDoc, payload);
+      request->send(ok ? 200 : 500, "application/json", payload);
+    }
+  );
+
+  webServer.on("/tak/enroll", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      String message;
+      bool ok = enrollTAKClientCertificate(false, message);
+      JsonDocument responseDoc;
+      responseDoc["status"] = ok ? 0 : 1;
+      responseDoc["message"] = message;
+
+      String payload;
+      serializeJson(responseDoc, payload);
+      request->send(ok ? 200 : 500, "application/json", payload);
+    }
+  );
+
+  webServer.on("/tak/reenroll", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      String message;
+      bool ok = enrollTAKClientCertificate(true, message);
+      JsonDocument responseDoc;
+      responseDoc["status"] = ok ? 0 : 1;
+      responseDoc["message"] = message;
+
+      String payload;
+      serializeJson(responseDoc, payload);
+      request->send(ok ? 200 : 500, "application/json", payload);
+    }
+  );
+
+  webServer.on("/tak/enroll-status", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      JsonDocument statusDoc;
+      getTAKEnrollmentStatus(statusDoc);
+      String payload;
+      serializeJson(statusDoc, payload);
+      request->send(200, "application/json", payload);
+    }
+  );
 
   webServer.on(fileCss.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {

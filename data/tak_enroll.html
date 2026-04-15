@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HaptiCap ATAK Enrollment</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --card: #fffaf0;
+      --ink: #14213d;
+      --accent: #b23a48;
+      --muted: #57606a;
+      --ok: #2a9d8f;
+    }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top right, #ffe8c2, var(--bg) 35%);
+      color: var(--ink);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    .card {
+      width: min(680px, 96vw);
+      background: var(--card);
+      border: 1px solid #e8dfd0;
+      border-radius: 16px;
+      box-shadow: 0 14px 42px rgba(20, 33, 61, 0.12);
+      padding: 18px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+    }
+    .muted {
+      color: var(--muted);
+      margin: 0 0 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .qr {
+      display: grid;
+      place-items: center;
+      min-height: 320px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid #ede4d5;
+      overflow: hidden;
+    }
+    .qr img {
+      width: 320px;
+      max-width: 100%;
+      height: auto;
+      image-rendering: pixelated;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-block;
+      border: 1px solid #d6cbb8;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+    code {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-all;
+      padding: 10px;
+      border: 1px solid #eadfce;
+      border-radius: 10px;
+      background: #fff;
+      font-size: 0.82rem;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>ATAK Enrollment QR</h1>
+    <p class="muted">Scan with ATAK. The QR contains a tak:// deep link with host, username, and token.</p>
+
+    <div class="grid">
+      <div class="row">
+        <span class="pill" id="host">host: -</span>
+        <span class="pill" id="user">user: -</span>
+      </div>
+
+      <div class="qr" id="qr"></div>
+
+      <code id="uri">Loading...</code>
+
+      <div class="row">
+        <button id="refresh">Refresh</button>
+        <button id="refreshToken">Refresh Token</button>
+        <button id="enrollDevice">Enroll Device</button>
+        <button id="copy">Copy URI</button>
+        <span id="status" class="ok"></span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const qrEl = document.getElementById('qr');
+    const uriEl = document.getElementById('uri');
+    const hostEl = document.getElementById('host');
+    const userEl = document.getElementById('user');
+    const statusEl = document.getElementById('status');
+
+    async function loadQR() {
+      statusEl.textContent = '';
+      const response = await fetch('/tak/enrollment-qr-data', { cache: 'no-store' });
+      const data = await response.json();
+      const uri = data.uri || '';
+
+      hostEl.textContent = 'host: ' + (data.host || '-');
+      userEl.textContent = 'user: ' + (data.username || '-');
+      uriEl.textContent = uri || 'Missing values. Set takEnrollHost, takEnrollUsername and takEnrollToken via /tak/config.';
+
+      qrEl.innerHTML = '';
+      if (uri) {
+        const img = document.createElement('img');
+        img.alt = 'ATAK enrollment QR';
+        img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' + encodeURIComponent(uri);
+        qrEl.appendChild(img);
+      }
+    }
+
+    document.getElementById('refresh').addEventListener('click', loadQR);
+
+    document.getElementById('refreshToken').addEventListener('click', async () => {
+      statusEl.textContent = 'Refreshing token...';
+      try {
+        const response = await fetch('/tak/enrollment-qr-token/refresh', { method: 'POST' });
+        const data = await response.json();
+        statusEl.textContent = data.message || (response.ok ? 'Token refreshed' : 'Token refresh failed');
+        await loadQR();
+      } catch (err) {
+        statusEl.textContent = 'Token refresh failed';
+      }
+    });
+
+    document.getElementById('enrollDevice').addEventListener('click', async () => {
+      statusEl.textContent = 'Enrolling device...';
+      try {
+        const response = await fetch('/tak/enroll', { method: 'POST' });
+        const data = await response.json();
+        statusEl.textContent = data.message || (response.ok ? 'Enrollment complete' : 'Enrollment failed');
+      } catch (err) {
+        statusEl.textContent = 'Enrollment failed';
+      }
+    });
+
+    document.getElementById('copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(uriEl.textContent || '');
+        statusEl.textContent = 'Copied';
+      } catch (err) {
+        statusEl.textContent = 'Copy failed';
+      }
+    });
+
+    loadQR();
+  </script>
+</body>
+</html>

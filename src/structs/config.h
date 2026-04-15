@@ -29,6 +29,40 @@ struct Config {
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = true;
   int selectedMap = 1;
+
+  // TAK/OpenTAK settings
+  bool takEnabled = false;
+  bool takSSL = true;
+  bool takVerifyCert = true;
+  bool takPersistent = true;
+  bool takUDPEnabled = false;
+  char takServer[64] = "";
+  uint16_t takPort = 8089;
+  uint16_t takUDPPort = 6969;
+  char takCallsign[32] = "HaptiCap";
+  char takUID[48] = "";
+  char takCotType[32] = "a-f-G-U-C";
+  uint16_t takIntervalSec = 30;
+  char takCACertPath[64] = "/certs/tak_ca.crt";
+
+  // ATAK QR enrollment deep-link settings (manual mode)
+  uint16_t takEnrollPort = 8446;
+  char takEnrollHost[64] = "";
+  char takEnrollUsername[64] = "";
+  char takEnrollToken[1024] = "";
+
+  // Optional OpenTAK API token refresh settings
+  bool takAutoTokenFetch = false;
+  char takTokenApiPath[96] = "/api/tokens/current";
+  char takTokenApiUsername[64] = "";
+  char takTokenApiPassword[64] = "";
+
+  // Device enrollment certificate settings
+  bool takUseClientCert = true;
+  char takEnrollPath[96] = "/Marti/api/tls/signClient/v2";
+  char takClientCertPath[64] = "/certs/tak_client.crt";
+  char takClientKeyPath[64] = "/certs/tak_client.key";
+  char takClientP12Path[64] = "/certs/tak_client.p12";
 };
 
 #endif

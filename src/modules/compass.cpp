@@ -97,8 +97,8 @@ void setupLis3md(){
   Serial.println("LIS3MDL Found!");
 
   lis3mdl.setRange(LIS3MDL_RANGE_4_GAUSS);
-  lis3mdl.setDataRate(LIS3MDL_DATARATE_1000_HZ);
-  lis3mdl.setPerformanceMode(LIS3MDL_MEDIUMMODE);
+  lis3mdl.setDataRate(LIS3MDL_DATARATE_80_HZ);
+  lis3mdl.setPerformanceMode(LIS3MDL_ULTRAHIGHMODE);
   lis3mdl.setOperationMode(LIS3MDL_CONTINUOUSMODE);
 
   lis3mdl.getEvent(&mag_event);
@@ -171,24 +171,62 @@ void calibrateMagHardIron(){
   Serial.println("NOW!");
 
   // Reset extrema for a fresh calibration run.
-  lis3mdl.getEvent(&mag_event);
-  magData.min_x = magData.max_x = mag_event.magnetic.x;
-  magData.min_y = magData.max_y = mag_event.magnetic.y;
-  magData.min_z = magData.max_z = mag_event.magnetic.z;
+  float seedX = 0.0f;
+  float seedY = 0.0f;
+  float seedZ = 0.0f;
+  int seedTries = 0;
+  while (seedTries < 100) {
+    if (lis3mdl.magneticFieldAvailable() && lis3mdl.readMagneticField(seedX, seedY, seedZ)) {
+      break;
+    }
+    seedTries++;
+    delay(5);
+  }
+  if (seedTries >= 100 || !isfinite(seedX) || !isfinite(seedY) || !isfinite(seedZ)) {
+    Serial.println(F("ERROR: Failed to read initial magnetometer sample for calibration."));
+    return;
+  }
 
-  float prevX = mag_event.magnetic.x;
-  float prevY = mag_event.magnetic.y;
-  float prevZ = mag_event.magnetic.z;
+  magData.min_x = magData.max_x = seedX;
+  magData.min_y = magData.max_y = seedY;
+  magData.min_z = magData.max_z = seedZ;
+
+  float prevX = seedX;
+  float prevY = seedY;
+  float prevZ = seedZ;
   int stagnantSamples = 0;
   bool stagnantWarned = false;
+  int readFailures = 0;
 
   int i = 0;
   while(i < calSamples){
-    delay(20);
-    lis3mdl.getEvent(&mag_event);
-    float x = mag_event.magnetic.x;
-    float y = mag_event.magnetic.y;
-    float z = mag_event.magnetic.z;
+    unsigned long waitStart = millis();
+    while (!lis3mdl.magneticFieldAvailable() && (millis() - waitStart) < 250) {
+      delay(2);
+    }
+
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    bool dataReady = lis3mdl.magneticFieldAvailable();
+    bool readOk = lis3mdl.readMagneticField(x, y, z);
+    if (!dataReady || !readOk || !isfinite(x) || !isfinite(y) || !isfinite(z)) {
+      readFailures++;
+      if ((readFailures % 10) == 1) {
+        Serial.print(F("Mag read failure #"));
+        Serial.print(readFailures);
+        Serial.print(F(" (ready="));
+        Serial.print(dataReady ? F("1") : F("0"));
+        Serial.println(F(")"));
+      }
+      if (readFailures > 100) {
+        Serial.println(F("ERROR: Too many magnetometer read failures. Aborting mag calibration."));
+        break;
+      }
+      delay(20);
+      continue;
+    }
+    readFailures = 0;
 
     float delta = fabsf(x - prevX) + fabsf(y - prevY) + fabsf(z - prevZ);
     if (delta < 0.01f) {
@@ -232,9 +270,15 @@ void calibrateMagHardIron(){
     Serial.print((magData.max_x - magData.min_x)/2, 4); Serial.print(", ");
     Serial.print((magData.max_y - magData.min_y)/2, 4); Serial.print(", ");
     Serial.print((magData.max_z - magData.min_z)/2, 4); Serial.println(")");
-    i++;    
+    i++;
     delay(10); 
   }
+
+  if (i < 10) {
+    Serial.println(F("ERROR: Not enough valid magnetometer samples collected. Calibration values not updated."));
+    return;
+  }
+
   caldata.magOffsetX = magData.mid_x;
   caldata.magOffsetY = magData.mid_y;
   caldata.magOffsetZ = magData.mid_z;

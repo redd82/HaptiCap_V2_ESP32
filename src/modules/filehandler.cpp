@@ -32,6 +32,13 @@ extern JsonDocument selectedMapDoc;
 // Local variables
 bool cssJsFileNamesConcat = false;
 
+static void copyStringToBuffer(const char* value, char* target, size_t targetSize) {
+  if (value == nullptr || target == nullptr || targetSize == 0) {
+    return;
+  }
+  String(value).toCharArray(target, targetSize);
+}
+
 // Prototypes
 extern Config config;
 extern CalData caldata;
@@ -219,6 +226,33 @@ void saveConfigDataToJSON(){
   configDoc["maxDelay"] = String(config.maxDelay);
   configDoc["timeZoneOffset"] = String(config.timeZoneOffset);
   configDoc["selectedMap"] = String(config.selectedMap);
+
+  configDoc["takEnabled"] = config.takEnabled;
+  configDoc["takSSL"] = config.takSSL;
+  configDoc["takVerifyCert"] = config.takVerifyCert;
+  configDoc["takPersistent"] = config.takPersistent;
+  configDoc["takUDPEnabled"] = config.takUDPEnabled;
+  configDoc["takServer"] = config.takServer;
+  configDoc["takPort"] = config.takPort;
+  configDoc["takUDPPort"] = config.takUDPPort;
+  configDoc["takCallsign"] = config.takCallsign;
+  configDoc["takUID"] = config.takUID;
+  configDoc["takCotType"] = config.takCotType;
+  configDoc["takIntervalSec"] = config.takIntervalSec;
+  configDoc["takCACertPath"] = config.takCACertPath;
+  configDoc["takEnrollPort"] = config.takEnrollPort;
+  configDoc["takEnrollHost"] = config.takEnrollHost;
+  configDoc["takEnrollUsername"] = config.takEnrollUsername;
+  configDoc["takEnrollToken"] = config.takEnrollToken;
+  configDoc["takAutoTokenFetch"] = config.takAutoTokenFetch;
+  configDoc["takTokenApiPath"] = config.takTokenApiPath;
+  configDoc["takTokenApiUsername"] = config.takTokenApiUsername;
+  configDoc["takTokenApiPassword"] = config.takTokenApiPassword;
+  configDoc["takUseClientCert"] = config.takUseClientCert;
+  configDoc["takEnrollPath"] = config.takEnrollPath;
+  configDoc["takClientCertPath"] = config.takClientCertPath;
+  configDoc["takClientKeyPath"] = config.takClientKeyPath;
+  configDoc["takClientP12Path"] = config.takClientP12Path;
 }
 
 // Saves the configuration to a file
@@ -262,6 +296,33 @@ void putJSONConfigDataInMemory(){
   config.maxDelay = configDoc["maxDelay"].as<int>();
   config.timeZoneOffset = configDoc["timeZoneOffset"].as<int>();
   config.selectedMap = configDoc["selectedMap"].as<int>();
+
+  config.takEnabled = configDoc["takEnabled"] | config.takEnabled;
+  config.takSSL = configDoc["takSSL"] | config.takSSL;
+  config.takVerifyCert = configDoc["takVerifyCert"] | config.takVerifyCert;
+  config.takPersistent = configDoc["takPersistent"] | config.takPersistent;
+  config.takUDPEnabled = configDoc["takUDPEnabled"] | config.takUDPEnabled;
+  copyStringToBuffer(configDoc["takServer"] | config.takServer, config.takServer, sizeof(config.takServer));
+  config.takPort = configDoc["takPort"] | config.takPort;
+  config.takUDPPort = configDoc["takUDPPort"] | config.takUDPPort;
+  copyStringToBuffer(configDoc["takCallsign"] | config.takCallsign, config.takCallsign, sizeof(config.takCallsign));
+  copyStringToBuffer(configDoc["takUID"] | config.takUID, config.takUID, sizeof(config.takUID));
+  copyStringToBuffer(configDoc["takCotType"] | config.takCotType, config.takCotType, sizeof(config.takCotType));
+  config.takIntervalSec = configDoc["takIntervalSec"] | config.takIntervalSec;
+  copyStringToBuffer(configDoc["takCACertPath"] | config.takCACertPath, config.takCACertPath, sizeof(config.takCACertPath));
+  config.takEnrollPort = configDoc["takEnrollPort"] | config.takEnrollPort;
+  copyStringToBuffer(configDoc["takEnrollHost"] | config.takEnrollHost, config.takEnrollHost, sizeof(config.takEnrollHost));
+  copyStringToBuffer(configDoc["takEnrollUsername"] | config.takEnrollUsername, config.takEnrollUsername, sizeof(config.takEnrollUsername));
+  copyStringToBuffer(configDoc["takEnrollToken"] | config.takEnrollToken, config.takEnrollToken, sizeof(config.takEnrollToken));
+  config.takAutoTokenFetch = configDoc["takAutoTokenFetch"] | config.takAutoTokenFetch;
+  copyStringToBuffer(configDoc["takTokenApiPath"] | config.takTokenApiPath, config.takTokenApiPath, sizeof(config.takTokenApiPath));
+  copyStringToBuffer(configDoc["takTokenApiUsername"] | config.takTokenApiUsername, config.takTokenApiUsername, sizeof(config.takTokenApiUsername));
+  copyStringToBuffer(configDoc["takTokenApiPassword"] | config.takTokenApiPassword, config.takTokenApiPassword, sizeof(config.takTokenApiPassword));
+  config.takUseClientCert = configDoc["takUseClientCert"] | config.takUseClientCert;
+  copyStringToBuffer(configDoc["takEnrollPath"] | config.takEnrollPath, config.takEnrollPath, sizeof(config.takEnrollPath));
+  copyStringToBuffer(configDoc["takClientCertPath"] | config.takClientCertPath, config.takClientCertPath, sizeof(config.takClientCertPath));
+  copyStringToBuffer(configDoc["takClientKeyPath"] | config.takClientKeyPath, config.takClientKeyPath, sizeof(config.takClientKeyPath));
+  copyStringToBuffer(configDoc["takClientP12Path"] | config.takClientP12Path, config.takClientP12Path, sizeof(config.takClientP12Path));
 }
 
 void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {

@@ -18,6 +18,7 @@
 #include "modules/wifihandler.h"
 #include "modules/compass.h"
 #include "modules/gps.h"
+#include "modules/takhandler.h"
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 #define SWVERSION 2.01
@@ -433,6 +434,7 @@ void setup(){
   ElegantOTA.setAuth(config.deviceName, config.apPasswd);
   Serial.println("OTA Enabled!");
   webServerSetup();
+  setupTAK();
   haptiCapReady();
 }
 
@@ -494,4 +496,6 @@ void loop(){
 
     //ledTesting();
   }
+
+  handleTAK();
 }
