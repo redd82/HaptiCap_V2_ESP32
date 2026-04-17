@@ -258,6 +258,12 @@ void saveConfigDataToJSON(){
   configDoc["takClientKeyPath"] = config.takClientKeyPath;
   configDoc["takClientP12Path"] = config.takClientP12Path;
   configDoc["takTruststoreP12Path"] = config.takTruststoreP12Path;
+  configDoc["takReconnectEnabled"] = config.takReconnectEnabled;
+  configDoc["takReconnectOnWifiReconnect"] = config.takReconnectOnWifiReconnect;
+  configDoc["takReconnectInitialDelayMs"] = config.takReconnectInitialDelayMs;
+  configDoc["takReconnectMaxDelayMs"] = config.takReconnectMaxDelayMs;
+  configDoc["takReconnectBackoffMultiplier"] = config.takReconnectBackoffMultiplier;
+  configDoc["takReconnectMaxDurationMs"] = config.takReconnectMaxDurationMs;
 }
 
 // Saves the configuration to a file
@@ -318,6 +324,12 @@ void putJSONConfigDataInMemory(){
   String(configDoc["takClientKeyPath"] | config.takClientKeyPath).toCharArray(config.takClientKeyPath, sizeof(config.takClientKeyPath));
   String(configDoc["takClientP12Path"] | config.takClientP12Path).toCharArray(config.takClientP12Path, sizeof(config.takClientP12Path));
   String(configDoc["takTruststoreP12Path"] | config.takTruststoreP12Path).toCharArray(config.takTruststoreP12Path, sizeof(config.takTruststoreP12Path));
+  config.takReconnectEnabled = configDoc["takReconnectEnabled"] | config.takReconnectEnabled;
+  config.takReconnectOnWifiReconnect = configDoc["takReconnectOnWifiReconnect"] | config.takReconnectOnWifiReconnect;
+  config.takReconnectInitialDelayMs = configDoc["takReconnectInitialDelayMs"] | config.takReconnectInitialDelayMs;
+  config.takReconnectMaxDelayMs = configDoc["takReconnectMaxDelayMs"] | config.takReconnectMaxDelayMs;
+  config.takReconnectBackoffMultiplier = configDoc["takReconnectBackoffMultiplier"] | config.takReconnectBackoffMultiplier;
+  config.takReconnectMaxDurationMs = configDoc["takReconnectMaxDurationMs"] | config.takReconnectMaxDurationMs;
 }
 
 void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {

@@ -41,6 +41,17 @@ unsigned long takLastCotAttemptMs = 0;
 uint32_t takCotTxCount = 0;
 uint32_t takCotTxFailCount = 0;
 
+// Reconnection runtime state
+unsigned long takLastDisconnectMs = 0;       // millis() when connection was lost; 0 = not in reconnect cycle
+uint32_t takReconnectAttempts = 0;           // Attempts in the current disconnect cycle
+unsigned long takReconnectCurrentDelayMs = 0;// Backoff delay currently in effect
+unsigned long takReconnectNextAttemptMs = 0; // When to fire the next attempt
+String takReconnectLastReason = "";          // Last reconnection failure reason
+bool takReconnectGivenUp = false;            // True once max-duration timeout is exceeded
+wl_status_t takPrevWifiStatus = WL_DISCONNECTED; // Tracks WiFi state changes
+uint32_t takReconnectTotalAttempts = 0;      // Cumulative attempts across sessions (persisted)
+uint32_t takReconnectTotalSuccesses = 0;     // Cumulative successes across sessions (persisted)
+
 constexpr unsigned long kTakCotIntervalMs = 5000;
 constexpr unsigned long kTakCotStaleSeconds = 120;
 
@@ -526,6 +537,103 @@ void persistTakConfig() {
   saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
 }
 
+void saveTakMetrics() {
+  String path = jsonDir + "tak_metrics.json";
+  LittleFS.remove(path.c_str());
+  File file = LittleFS.open(path.c_str(), FILE_WRITE);
+  if (!file) {
+    Serial.println("TAK: failed to open metrics file for writing");
+    return;
+  }
+  JsonDocument doc;
+  doc["totalReconnectAttempts"] = takReconnectTotalAttempts;
+  doc["totalReconnectSuccesses"] = takReconnectTotalSuccesses;
+  serializeJson(doc, file);
+  file.close();
+}
+
+void loadTakMetrics() {
+  String path = jsonDir + "tak_metrics.json";
+  File file = LittleFS.open(path.c_str(), FILE_READ);
+  if (!file) {
+    return;  // No metrics file yet; start from zero
+  }
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, file);
+  file.close();
+  if (err) {
+    return;
+  }
+  takReconnectTotalAttempts = doc["totalReconnectAttempts"] | 0u;
+  takReconnectTotalSuccesses = doc["totalReconnectSuccesses"] | 0u;
+}
+
+void resetReconnectState() {
+  takLastDisconnectMs = 0;
+  takReconnectAttempts = 0;
+  takReconnectCurrentDelayMs = 0;
+  takReconnectNextAttemptMs = 0;
+  takReconnectLastReason = "";
+  takReconnectGivenUp = false;
+}
+
+void noteTakDisconnected() {
+  if (takLastDisconnectMs != 0) {
+    return;  // Already tracking this disconnect event
+  }
+  unsigned long nowMs = millis();
+  takLastDisconnectMs = nowMs;
+  takReconnectAttempts = 0;
+  takReconnectCurrentDelayMs = config.takReconnectInitialDelayMs;
+  takReconnectNextAttemptMs = nowMs + takReconnectCurrentDelayMs;
+  takReconnectGivenUp = false;
+  takReconnectLastReason = "Connection lost";
+}
+
+bool shouldAttemptReconnect() {
+  if (!config.takReconnectEnabled) return false;
+  if (takConnected) return false;
+  if (takLastDisconnectMs == 0) return false;  // Not in a reconnect cycle
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (takReconnectGivenUp) return false;
+
+  unsigned long nowMs = millis();
+  if (config.takReconnectMaxDurationMs > 0 &&
+      (nowMs - takLastDisconnectMs) > config.takReconnectMaxDurationMs) {
+    takReconnectGivenUp = true;
+    takLastMessage = "TAK reconnect: giving up after " +
+                     String(config.takReconnectMaxDurationMs / 60000) + " min";
+    saveTakMetrics();
+    return false;
+  }
+
+  return (nowMs >= takReconnectNextAttemptMs);
+}
+
+void attemptTakReconnect() {
+  takReconnectTotalAttempts++;
+  String msg;
+  bool result = connectTAK(msg);
+  if (result) {
+    takReconnectTotalSuccesses++;
+    resetReconnectState();
+    saveTakMetrics();
+  } else {
+    takReconnectAttempts++;
+    takReconnectLastReason = msg;
+    // Advance backoff: multiply current delay, cap at max
+    unsigned long nextDelay = (unsigned long)((float)takReconnectCurrentDelayMs *
+                                              config.takReconnectBackoffMultiplier);
+    if (nextDelay > config.takReconnectMaxDelayMs || nextDelay <= takReconnectCurrentDelayMs) {
+      nextDelay = config.takReconnectMaxDelayMs;
+    }
+    takReconnectCurrentDelayMs = nextDelay;
+    takReconnectNextAttemptMs = millis() + takReconnectCurrentDelayMs;
+    saveTakMetrics();
+  }
+}
+
+
 bool storePemArtifact(const char *path, const String &content) {
   if (content.length() == 0) {
     return false;
@@ -539,6 +647,7 @@ bool storePemArtifact(const char *path, const String &content) {
 void setupTAK() {
   ensureTakDirectories();
   normalizeTakConfig();
+  loadTakMetrics();
 }
 
 void getTAKConfig(JsonDocument &doc) {
@@ -560,6 +669,12 @@ void getTAKConfig(JsonDocument &doc) {
   doc["takClientKeyPath"] = config.takClientKeyPath;
   doc["takClientP12Path"] = config.takClientP12Path;
   doc["takTruststoreP12Path"] = config.takTruststoreP12Path;
+  doc["takReconnectEnabled"] = config.takReconnectEnabled;
+  doc["takReconnectOnWifiReconnect"] = config.takReconnectOnWifiReconnect;
+  doc["takReconnectInitialDelayMs"] = config.takReconnectInitialDelayMs;
+  doc["takReconnectMaxDelayMs"] = config.takReconnectMaxDelayMs;
+  doc["takReconnectBackoffMultiplier"] = config.takReconnectBackoffMultiplier;
+  doc["takReconnectMaxDurationMs"] = config.takReconnectMaxDurationMs;
 }
 
 void getTAKStatus(JsonDocument &doc) {
@@ -582,6 +697,18 @@ void getTAKStatus(JsonDocument &doc) {
   doc["lastCotSentMs"] = takLastCotSentMs;
   doc["cotTxCount"] = takCotTxCount;
   doc["cotTxFailCount"] = takCotTxFailCount;
+  // Reconnection metrics
+  unsigned long nowMs = millis();
+  doc["reconnectEnabled"] = config.takReconnectEnabled;
+  doc["reconnecting"] = (takLastDisconnectMs > 0 && !takConnected && !takReconnectGivenUp);
+  doc["reconnectGivenUp"] = takReconnectGivenUp;
+  doc["reconnectAttempts"] = takReconnectAttempts;
+  doc["reconnectTotalAttempts"] = takReconnectTotalAttempts;
+  doc["reconnectTotalSuccesses"] = takReconnectTotalSuccesses;
+  doc["reconnectLastReason"] = takReconnectLastReason;
+  doc["timeSinceDisconnectMs"] = takLastDisconnectMs > 0 ? (nowMs - takLastDisconnectMs) : 0;
+  doc["nextReconnectInMs"] = (takReconnectNextAttemptMs > nowMs && !takConnected)
+                               ? (takReconnectNextAttemptMs - nowMs) : 0;
 }
 
 void getTAKCertDiagnostics(JsonDocument &doc) {
@@ -771,6 +898,22 @@ bool updateTAKConfigFromJson(const JsonDocument &doc, String &message) {
   copyToBuffer(obj["takClientP12Path"] | String(config.takClientP12Path), config.takClientP12Path, sizeof(config.takClientP12Path));
   copyToBuffer(obj["takTruststoreP12Path"] | String(config.takTruststoreP12Path), config.takTruststoreP12Path, sizeof(config.takTruststoreP12Path));
 
+  config.takReconnectEnabled = obj["takReconnectEnabled"] | config.takReconnectEnabled;
+  config.takReconnectOnWifiReconnect = obj["takReconnectOnWifiReconnect"] | config.takReconnectOnWifiReconnect;
+  {
+    uint32_t v = obj["takReconnectInitialDelayMs"] | config.takReconnectInitialDelayMs;
+    config.takReconnectInitialDelayMs = v > 0 ? v : 1000u;
+  }
+  {
+    uint32_t v = obj["takReconnectMaxDelayMs"] | config.takReconnectMaxDelayMs;
+    config.takReconnectMaxDelayMs = (v >= config.takReconnectInitialDelayMs) ? v : config.takReconnectInitialDelayMs;
+  }
+  {
+    float v = obj["takReconnectBackoffMultiplier"] | config.takReconnectBackoffMultiplier;
+    config.takReconnectBackoffMultiplier = v > 1.0f ? v : 1.1f;
+  }
+  config.takReconnectMaxDurationMs = obj["takReconnectMaxDurationMs"] | config.takReconnectMaxDurationMs;
+
   persistTakConfig();
   message = "TAK settings saved";
   takLastMessage = message;
@@ -954,18 +1097,41 @@ void disconnectTAK(const String &reason) {
   takSecureClient.stop();
   takConnected = false;
   takLastMessage = reason.length() > 0 ? reason : "TAK disconnected";
+  resetReconnectState();  // Manual disconnect: suppress auto-reconnect
 }
 
 void serviceTAK(const SensorData &sensorData) {
   if (!config.takEnabled || !config.takConfigured) {
     return;
   }
-  if (!takConnected || !takClient->connected()) {
+
+  unsigned long nowMs = millis();
+
+  // Detect WiFi state transitions
+  wl_status_t currentWifiStatus = (wl_status_t)WiFi.status();
+  if (config.takReconnectOnWifiReconnect &&
+      currentWifiStatus == WL_CONNECTED && takPrevWifiStatus != WL_CONNECTED &&
+      !takConnected && takLastDisconnectMs > 0 && !takReconnectGivenUp) {
+    // WiFi just came back up; schedule an immediate TAK reconnection attempt
+    takReconnectNextAttemptMs = nowMs;
+  }
+  takPrevWifiStatus = currentWifiStatus;
+
+  // Detect unexpected connection drop
+  if (takConnected && !takClient->connected()) {
     takConnected = false;
+    noteTakDisconnected();
+  }
+
+  // Attempt reconnection when disconnected
+  if (!takConnected) {
+    if (shouldAttemptReconnect()) {
+      attemptTakReconnect();
+    }
     return;
   }
 
-  unsigned long nowMs = millis();
+  // CoT transmission
   if ((nowMs - takLastCotAttemptMs) < kTakCotIntervalMs) {
     return;
   }
@@ -1000,6 +1166,7 @@ void serviceTAK(const SensorData &sensorData) {
     takLastMessage = "TAK CoT send failed";
     if (!takClient->connected()) {
       takConnected = false;
+      noteTakDisconnected();
     }
   }
 }

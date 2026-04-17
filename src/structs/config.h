@@ -46,6 +46,13 @@ struct Config {
   char takClientKeyPath[64] = "/certs/tak_client.key";
   char takClientP12Path[64] = "/certs/tak_client.p12";
   char takTruststoreP12Path[64] = "/certs/truststore-root.p12";
+  // TAK reconnection configuration
+  bool takReconnectEnabled = true;
+  bool takReconnectOnWifiReconnect = true;
+  uint32_t takReconnectInitialDelayMs = 5000;
+  uint32_t takReconnectMaxDelayMs = 300000;
+  float takReconnectBackoffMultiplier = 1.5f;
+  uint32_t takReconnectMaxDurationMs = 1800000;
 };
 
 #endif
