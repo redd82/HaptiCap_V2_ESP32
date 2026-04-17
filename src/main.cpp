@@ -420,6 +420,14 @@ void setup(){
   setupTAK();
   loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
   wifiSetup();
+  if (config.takEnabled) {
+    String takBootMessage;
+    if (connectTAK(takBootMessage)) {
+      Serial.println(String("TAK auto-connect on boot: ") + takBootMessage);
+    } else {
+      Serial.println(String("TAK auto-connect on boot failed: ") + takBootMessage);
+    }
+  }
   touchPadSetup();
   ioSetup();
   timerSetup();

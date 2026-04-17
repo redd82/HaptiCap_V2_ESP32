@@ -95,6 +95,31 @@ static void updateMagEvent() {
   lis3mdl.getEvent(&mag_event);
 }
 
+static bool readFreshMagSample(float &x, float &y, float &z) {
+  // Retry briefly so calibration reads are less likely to reuse stale values.
+  const float prevX = mag_event.magnetic.x;
+  const float prevY = mag_event.magnetic.y;
+  const float prevZ = mag_event.magnetic.z;
+
+  for (int tries = 0; tries < 10; ++tries) {
+    updateMagEvent();
+    x = mag_event.magnetic.x;
+    y = mag_event.magnetic.y;
+    z = mag_event.magnetic.z;
+    float delta = fabsf(x - prevX) + fabsf(y - prevY) + fabsf(z - prevZ);
+    if (delta >= 0.001f) {
+      return true;
+    }
+    delay(2);
+  }
+
+  // Return the latest sample even if it appears unchanged.
+  x = mag_event.magnetic.x;
+  y = mag_event.magnetic.y;
+  z = mag_event.magnetic.z;
+  return false;
+}
+
 void setupLis3md(){
     if (! lis3mdl.begin_I2C()) { 
       Serial.println("Failed to find LIS3MDL chip");
@@ -103,8 +128,9 @@ void setupLis3md(){
   Serial.println("LIS3MDL Found!");
 
   lis3mdl.setRange(LIS3MDL_RANGE_4_GAUSS);
-  lis3mdl.setDataRate(LIS3MDL_DATARATE_1000_HZ);
-  lis3mdl.setPerformanceMode(LIS3MDL_MEDIUMMODE);
+  // 155 Hz + high performance mode is a stable combo over I2C for live calibration.
+  lis3mdl.setDataRate(LIS3MDL_DATARATE_155_HZ);
+  lis3mdl.setPerformanceMode(LIS3MDL_HIGHMODE);
   lis3mdl.setOperationMode(LIS3MDL_CONTINUOUSMODE);
 
   updateMagEvent();
@@ -177,24 +203,27 @@ void calibrateMagHardIron(){
   Serial.println("NOW!");
 
   // Reset extrema for a fresh calibration run.
-  updateMagEvent();
-  magData.min_x = magData.max_x = mag_event.magnetic.x;
-  magData.min_y = magData.max_y = mag_event.magnetic.y;
-  magData.min_z = magData.max_z = mag_event.magnetic.z;
+  float seedX = 0.0f;
+  float seedY = 0.0f;
+  float seedZ = 0.0f;
+  readFreshMagSample(seedX, seedY, seedZ);
+  magData.min_x = magData.max_x = seedX;
+  magData.min_y = magData.max_y = seedY;
+  magData.min_z = magData.max_z = seedZ;
 
-  float prevX = mag_event.magnetic.x;
-  float prevY = mag_event.magnetic.y;
-  float prevZ = mag_event.magnetic.z;
+  float prevX = seedX;
+  float prevY = seedY;
+  float prevZ = seedZ;
   int stagnantSamples = 0;
   bool stagnantWarned = false;
 
   int i = 0;
   while(i < calSamples){
     delay(20);
-    updateMagEvent();
-    float x = mag_event.magnetic.x;
-    float y = mag_event.magnetic.y;
-    float z = mag_event.magnetic.z;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    bool fresh = readFreshMagSample(x, y, z);
 
     float delta = fabsf(x - prevX) + fabsf(y - prevY) + fabsf(z - prevZ);
     if (delta < 0.01f) {
@@ -204,7 +233,7 @@ void calibrateMagHardIron(){
       stagnantWarned = false;
     }
     if (stagnantSamples > 50 && !stagnantWarned) {
-      Serial.println(F("WARNING: Magnetometer samples appear static. Check sensor wiring/power and movement."));
+      Serial.println(F("WARNING: Magnetometer samples appear static. Check wiring/power and rotate on all axes."));
       stagnantWarned = true;
     }
     prevX = x;
@@ -217,6 +246,9 @@ void calibrateMagHardIron(){
     Serial.print(x, 4); Serial.print(", ");
     Serial.print(y, 4); Serial.print(", ");
     Serial.print(z, 4); Serial.print(")");
+    if (!fresh) {
+      Serial.print(" [stale]");
+    }
 
     magData.min_x = min(magData.min_x, x);
     magData.min_y = min(magData.min_y, y);
