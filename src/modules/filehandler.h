@@ -24,12 +24,16 @@ void updateMaptoDB(String PNGFile, String KMLFile, JsonObject obj, bool pngUpdat
 String prepMapNameForMapDB(String fileName);
 
 void readMapWaypointsFromJSON(fs::FS &fs, const char * path, int requestedMap);
-void readMapFromJSON(fs::FS &fs, const char * path, int requestedMap);
+bool readMapFromJSON(fs::FS &fs, const char * path, int requestedMap);
 void saveSensorDataToJSON();
 void saveCalibrationDataToJSON();
 
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels);
 String printFreeSpace();
+String readFile(fs::FS &fs, const char * path);
+bool writeStringToFile(fs::FS &fs, const char * path, const String &content);
+bool writeBytesToFile(fs::FS &fs, const char * path, const uint8_t *data, size_t len);
+void createDir(fs::FS &fs, const char * path);
 void deleteFile(fs::FS &fs, const char * path);
 void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels);
 

@@ -1,4 +1,5 @@
-#include "WiFiHandler.h"
+#include "wifihandler.h"
+#include <time.h>
 
 String get_wifi_status(int status){
     switch(status){
@@ -73,6 +74,11 @@ void wifiSetup(){
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(config.clientSSID);
+    // Sync system clock via NTP so TLS certificate date validation works.
+    // configTime offset is in seconds; keep system time in UTC (offset 0) so
+    // TLS cert validation uses UTC, but store offset for display purposes.
+    configTime(config.timeZoneOffset * 3600L, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.println("NTP sync started");
     IPAddress IP = WiFi.localIP();
     ipAddress = IP.toString();
   }

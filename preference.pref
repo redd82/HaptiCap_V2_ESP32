@@ -1,0 +1,23 @@
+<?xml version='1.0' standalone='yes'?>
+                <preferences>
+                    <preference version="1" name="cot_streams">
+                        <entry key="count" class="class java.lang.Integer">1</entry>
+                        <entry key="description0" class="class java.lang.String">OpenTAKServer_dev-ots.takat.nl</entry>
+                        <entry key="enabled0" class="class java.lang.Boolean">true</entry>
+                        <entry key="connectString0" class="class java.lang.String">dev-ots.takat.nl:8089:ssl</entry>
+                    </preference>
+                    <preference version="1" name="com.atakmap.app_preferences">
+                        <entry key="deviceProfileEnableOnConnect" class="class java.lang.Boolean">true</entry>
+                        <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
+                        <entry key="caLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/truststore-root.p12</entry>
+                        <entry key="caPassword" class="class java.lang.String">atakatak</entry>
+                        <entry key="clientPassword" class="class java.lang.String">atakatak</entry>
+                        <entry key="certificateLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/esp32.p12</entry>
+                        <entry key="appMgmtEnableUpdateServer" class="class java.lang.Boolean">true</entry>
+                        <entry key="atakUpdateServerUrl" class="class java.lang.String">https://dev-ots.takat.nl:8443/api/packages</entry>
+                        <entry key="repoStartupSync" class="class java.lang.Boolean">true</entry>
+                        <entry key="updateServerCaLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/truststore-root.p12</entry>
+                        <entry key="updateServerCaPassword" class="class java.lang.String">atakatak</entry>
+                    </preference>
+                </preferences>
+                

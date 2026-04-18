@@ -15,6 +15,7 @@
 #include "modules/filehandler.h"
 #include "modules/webserverhandler.h"
 #include "modules/hapticfeedback.h"
+#include "modules/takhandler.h"
 #include "modules/wifihandler.h"
 #include "modules/compass.h"
 #include "modules/gps.h"
@@ -119,6 +120,8 @@ touch_pad_t touchPin;
 int touchValueT0;
 int touchValueT3;
 
+static const char *kLittleFSPartitionLabel = "littlefs";
+
 bool bPrintHeader = false;
 int count = 0;
 int i = 0;
@@ -170,6 +173,7 @@ bool bDebugHomeReached = 0;
 int GPSFix = 0;
 bool GPSFixAccepted = 0;
 bool compassCalibrated = false;
+bool runCompassCalibrationRequested = false;
 bool asAP = true;
 bool startup = false;
 bool enableLed0;
@@ -363,9 +367,9 @@ void ioSetup(){
 void littleFSSetup(){
   // Initialize LittleFS
     delay(1000);
-  if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+  if (!LittleFS.begin(false /* false: Do not format if mount failed */, "/littlefs", 10, kLittleFSPartitionLabel)) {
     Serial.println("Failed to mount LittleFS");
-    if (!LittleFS.begin(true /* true: format */)) {
+    if (!LittleFS.begin(true /* true: format */, "/littlefs", 10, kLittleFSPartitionLabel)) {
       Serial.println("Failed to format LittleFS");
     } else {
       Serial.println("LittleFS formatted successfully");
@@ -413,15 +417,24 @@ void setup(){
 
   littleFSSetup();
   loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+  setupTAK();
   loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
   wifiSetup();
+  if (config.takEnabled) {
+    String takBootMessage;
+    if (connectTAK(takBootMessage)) {
+      Serial.println(String("TAK auto-connect on boot: ") + takBootMessage);
+    } else {
+      Serial.println(String("TAK auto-connect on boot failed: ") + takBootMessage);
+    }
+  }
   touchPadSetup();
   ioSetup();
   timerSetup();
   PWMSetup();
+  loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   wireScan();
   compassSetup();
-  loadCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
   delay(1000);
   getInitialReadings();
   loadSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
@@ -434,6 +447,19 @@ void setup(){
 }
 
 void loop(){
+  if (runCompassCalibrationRequested) {
+    Serial.println(F("Runtime compass calibration starting..."));
+    runCompassCalibrationRequested = false;
+    if (timer0 != NULL) timerStop(timer0);
+    if (timer1 != NULL) timerStop(timer1);
+    if (timer2 != NULL) timerStop(timer2);
+    calibrateCompass();
+    if (timer0 != NULL) timerStart(timer0);
+    if (timer1 != NULL) timerStart(timer1);
+    if (timer2 != NULL) timerStart(timer2);
+    Serial.println(F("Runtime compass calibration completed."));
+  }
+
   if(debugSettings.debugGPS2Serial){
     smartDelay(50);
   }else{
@@ -457,8 +483,8 @@ void loop(){
       portENTER_CRITICAL(&timer1Mux);
       interrupt1--;      
       portEXIT_CRITICAL(&timer1Mux);
-      //sensorData.compassHeading = readCompass();
-      //readCompass();
+      sensorData.compassHeading = readCompass();
+      compassheading = sensorData.compassHeading;
       if(interrupt1 > 10){
         interrupt1 = 2;
       }                 
@@ -478,4 +504,6 @@ void loop(){
 
     //ledTesting();
   }
+
+  serviceTAK(sensorData);
 }
