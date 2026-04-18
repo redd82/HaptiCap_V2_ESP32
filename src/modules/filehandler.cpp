@@ -61,7 +61,6 @@ String printFreeSpace(){
 
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     String filesListing = "";
-    String dirName = dirName.c_str();
     File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
@@ -78,7 +77,7 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
             filesListing = filesListing + "\n" + "  DIR : ";
             filesListing = filesListing + "\n" + file.name();
             if(levels){
-                listDir(fs, file.path(), levels -1);
+          filesListing += listDir(fs, file.path(), levels - 1);
             }
         } else {
             filesListing = filesListing + "\n" + "  FILE: " + file.name();
@@ -87,11 +86,7 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         file = root.openNextFile();
     }
 
-    if(levels == 0){
-      return filesListing;
-    }else{
-      return filesListing;
-    }
+    return filesListing;
 }
 
 void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels){

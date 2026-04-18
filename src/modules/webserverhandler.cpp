@@ -434,7 +434,12 @@ void webServerSetup(){
     {
       //String fileListing = listDir(LittleFS, "/", 2);
       String fileListing = listDir(LittleFS, mapsDir.c_str(), 0);
-      request->send(200, "application/json", "{ \"listing\": " + fileListing + "}");
+      JsonDocument responseDoc;
+      responseDoc["listing"] = fileListing;
+
+      String responseBody;
+      serializeJson(responseDoc, responseBody);
+      request->send(200, "application/json", responseBody);
     }
   );
 
