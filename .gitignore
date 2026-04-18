@@ -5,3 +5,5 @@
 .vscode/ipch
 /LinktoHaptiCap_V2_FE
 /data_old
+data/main.*.js
+data/main.*.css

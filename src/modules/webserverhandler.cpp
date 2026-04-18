@@ -541,8 +541,8 @@ void webServerSetup(){
   webServer.on("/tak/connect", HTTP_POST, [](AsyncWebServerRequest *request)
     {
       String message = "TAK connect requested";
-      bool ok = connectTAK(message);
-      int statusCode = ok ? 200 : 400;
+      bool ok = requestTAKConnect(message);
+      int statusCode = ok ? 202 : 400;
       request->send(statusCode, "application/json", "{ \"message\": \"" + message + "\" }");
     }
   );

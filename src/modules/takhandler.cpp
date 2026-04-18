@@ -51,9 +51,12 @@ bool takReconnectGivenUp = false;            // True once max-duration timeout i
 wl_status_t takPrevWifiStatus = WL_DISCONNECTED; // Tracks WiFi state changes
 uint32_t takReconnectTotalAttempts = 0;      // Cumulative attempts across sessions (persisted)
 uint32_t takReconnectTotalSuccesses = 0;     // Cumulative successes across sessions (persisted)
+bool takManualConnectRequested = false;      // Manual connect queued from web UI
+bool takManualConnectInProgress = false;     // Manual connect currently being processed in loop context
 
 constexpr unsigned long kTakCotIntervalMs = 5000;
 constexpr unsigned long kTakCotStaleSeconds = 120;
+constexpr uint32_t kTakReconnectMaxAttemptsPerCycle = 3;
 
 struct PemCheckResult {
   bool ok;
@@ -354,6 +357,7 @@ String sanitizeHostValue(const String &rawHost) {
   }
 
   host.trim();
+  host.toLowerCase();
   return host;
 }
 
@@ -374,12 +378,10 @@ String sanitizeFsPathValue(const String &rawPath) {
 
 bool isFatalTlsError(int errCode) {
   // Fatal classes where immediate retry is unlikely to succeed.
-  // -9984  X509 verify failed (CA/hostname/time/chain issue)
   // -9186  ASN1 tag/value invalid (malformed cert/key input)
   // -28928 SSL bad input parameters
   // -32512 SSL alloc failed: retrying immediately usually worsens pressure
-  return (errCode == -9984 || errCode == -9186 || errCode == -28928 ||
-          errCode == -32512);
+  return (errCode == -9186 || errCode == -28928 || errCode == -32512);
 }
 
 String xmlEscape(const String &raw) {
@@ -619,6 +621,13 @@ bool shouldAttemptReconnect() {
   if (WiFi.status() != WL_CONNECTED) return false;
   if (takReconnectGivenUp) return false;
 
+  if (takReconnectAttempts >= kTakReconnectMaxAttemptsPerCycle) {
+    takReconnectGivenUp = true;
+    takLastMessage = "TAK reconnect: giving up after " + String(kTakReconnectMaxAttemptsPerCycle) + " attempts";
+    saveTakMetrics();
+    return false;
+  }
+
   unsigned long nowMs = millis();
   if (config.takReconnectMaxDurationMs > 0 &&
       (nowMs - takLastDisconnectMs) > config.takReconnectMaxDurationMs) {
@@ -702,7 +711,9 @@ void getTAKConfig(JsonDocument &doc) {
 void getTAKStatus(JsonDocument &doc) {
   refreshTakFileCache();
   takConnected = takClient->connected();
+  bool manualConnecting = takManualConnectRequested || takManualConnectInProgress;
   doc["connected"] = takConnected;
+  doc["connecting"] = (!takConnected && manualConnecting);
   doc["enabled"] = config.takEnabled;
   doc["configured"] = config.takConfigured;
   doc["packageImported"] = config.takPackageImported;
@@ -900,6 +911,38 @@ void getTAKCertDiagnostics(JsonDocument &doc) {
   doc["serverIssuerMatchesImportedCA"] = issuerMatchesImportedCA;
 }
 
+bool requestTAKConnect(String &message) {
+  normalizeTakConfig();
+
+  if (!config.takEnabled) {
+    message = "TAK is disabled";
+    takLastMessage = message;
+    return false;
+  }
+  if (!config.takConfigured) {
+    message = "TAK server or port is not configured";
+    takLastMessage = message;
+    return false;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    message = "WiFi is not connected";
+    takLastMessage = message;
+    return false;
+  }
+  if (takConnected) {
+    message = "TAK connection already open";
+    takLastMessage = message;
+    return true;
+  }
+
+  takManualConnectRequested = true;
+  takManualConnectInProgress = false;
+  takReconnectGivenUp = false;
+  takLastMessage = "TAK connect requested";
+  message = takLastMessage;
+  return true;
+}
+
 bool updateTAKConfigFromJson(const JsonDocument &doc, String &message) {
   JsonVariantConst obj = doc.as<JsonVariantConst>();
 
@@ -1070,7 +1113,9 @@ bool connectTAK(String &message) {
     const char *clientCert = (config.takUseClientCert && takLoadedClientCertPem.length() > 0) ? takLoadedClientCertPem.c_str() : nullptr;
     const char *clientKey = (config.takUseClientCert && takLoadedClientKeyPem.length() > 0) ? takLoadedClientKeyPem.c_str() : nullptr;
 
-    constexpr int maxAttempts = 5;
+    constexpr int maxAttempts = 3;
+    constexpr int minAttemptsBeforeFail = 3;
+    constexpr unsigned long retryDelayMs = 3000;
     int lastErrCode = 0;
     char lastErrBuf[192] = {0};
     String attemptLog = "";
@@ -1111,13 +1156,13 @@ bool connectTAK(String &message) {
       // Always clean up the failed TLS context before deciding whether to retry.
       takSecureClient.stop();
 
-      if (fatalError) {
+      if (fatalError && attempt >= minAttemptsBeforeFail) {
         break;
       }
 
       // Clean up after the failed attempt, then wait before retrying.
       if (attempt < maxAttempts) {
-        delay(250);
+        delay(retryDelayMs);
       }
     }
 
@@ -1150,6 +1195,8 @@ void disconnectTAK(const String &reason) {
   takPlainClient.stop();
   takSecureClient.stop();
   takConnected = false;
+  takManualConnectRequested = false;
+  takManualConnectInProgress = false;
   takLastMessage = reason.length() > 0 ? reason : "TAK disconnected";
   resetReconnectState();  // Manual disconnect: suppress auto-reconnect
 }
@@ -1175,6 +1222,15 @@ void serviceTAK(const SensorData &sensorData) {
   if (takConnected && !takClient->connected()) {
     takConnected = false;
     noteTakDisconnected();
+  }
+
+  if (!takConnected && takManualConnectRequested) {
+    takManualConnectRequested = false;
+    takManualConnectInProgress = true;
+    takLastMessage = "TAK connecting...";
+    attemptTakReconnect();
+    takManualConnectInProgress = false;
+    return;
   }
 
   // Attempt reconnection when disconnected
