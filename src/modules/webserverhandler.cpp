@@ -563,6 +563,21 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/setNorth", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      float newOffset = setCompassNorth();
+      saveCalibrationDataToJSON();
+      saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
+
+      JsonDocument responseDoc;
+      responseDoc["status"] = 0;
+      responseDoc["compassOffset"] = newOffset;
+      String responseBody;
+      serializeJson(responseDoc, responseBody);
+      request->send(200, "application/json", responseBody);
+    }
+  );
+
   webServer.on(fileConfigJSON.c_str(), HTTP_GET, [](AsyncWebServerRequest *request)
     {
       request->send(LittleFS, (jsonDir + fileConfigJSON).c_str(), "application/json");

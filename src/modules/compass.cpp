@@ -378,6 +378,27 @@ void readAccel(){
   // accel_event is populated together with gyro in readGyro()
 }
 
+static float normalize360(float angleDeg) {
+  while (angleDeg < 0.0f) angleDeg += 360.0f;
+  while (angleDeg >= 360.0f) angleDeg -= 360.0f;
+  return angleDeg;
+}
+
+float setCompassNorth() {
+    // Read current heading with existing calibration and use it to rotate
+    // the offset so the present direction becomes 0° (North).
+    float currentHeading = readCompass();
+    caldata.compassOffset = normalize360(caldata.compassOffset - currentHeading);
+    filteredHeading = -1.0f;
+    compassheading = readCompass();
+
+    Serial.print(F("Set North applied. New compassOffset="));
+    Serial.println(caldata.compassOffset, 4);
+    Serial.print(F("New heading="));
+    Serial.println(compassheading, 2);
+    return caldata.compassOffset;
+}
+
 float readCompass() {
     // ── 1. Read raw sensor data ───────────────────────────────────────────────
     lsm6ds3strc.getEvent(&accel_event, &gyro_event, &temp_event);
@@ -395,9 +416,15 @@ float readCompass() {
     gz = gyro_event.gyro.z - caldata.gyroOffsetZ;
 
     // ── 4. Accelerometer: subtract bias (m/s²) ───────────────────────────────
-    ax = accel_event.acceleration.x - caldata.accelOffsetX;
-    ay = accel_event.acceleration.y - caldata.accelOffsetY;
-    az = accel_event.acceleration.z - caldata.accelOffsetZ;
+    // Guard: accel offsets > 5 m/s² are physically impossible and indicate
+    // stale data from an old BNO055 calibration file (different units).
+    // Fall back to zero offset to keep the Mahony filter sane.
+    float safeAOX = (fabsf(caldata.accelOffsetX) < 5.0f) ? caldata.accelOffsetX : 0.0f;
+    float safeAOY = (fabsf(caldata.accelOffsetY) < 5.0f) ? caldata.accelOffsetY : 0.0f;
+    float safeAOZ = (fabsf(caldata.accelOffsetZ) < 5.0f) ? caldata.accelOffsetZ : 0.0f;
+    ax = accel_event.acceleration.x - safeAOX;
+    ay = accel_event.acceleration.y - safeAOY;
+    az = accel_event.acceleration.z - safeAOZ;
 
     // ── 5. Magnetometer: hard-iron then soft-iron correction ─────────────────
     float mx_raw = mag_event.magnetic.x - caldata.magOffsetX;
