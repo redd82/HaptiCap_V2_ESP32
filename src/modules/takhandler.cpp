@@ -925,6 +925,13 @@ bool importTAKPackageData(const JsonDocument &doc, String &message) {
   uint16_t takPort = doc["takPort"] | 8089;
   bool takSSL = doc["takSSL"] | true;
   String description = doc["takDescription"] | "";
+  description.trim();
+
+  int underscoreIndex = description.indexOf('_');
+  String takTLSServerName = (underscoreIndex > 0)
+  ? description.substring(0, underscoreIndex)
+  : description;
+  takTLSServerName.trim();
   String clientCertPem = extractFirstPemBlock(doc["clientCertPem"] | "",
                                                "-----BEGIN CERTIFICATE-----",
                                                "-----END CERTIFICATE-----");
@@ -953,7 +960,7 @@ bool importTAKPackageData(const JsonDocument &doc, String &message) {
   config.takEnabled = doc["takEnabled"] | true;
   config.takPackageImported = true;
   copyToBuffer(takServer, config.takServer, sizeof(config.takServer));
-  copyToBuffer(takServer, config.takTLSServerName, sizeof(config.takTLSServerName));
+  copyToBuffer(takTLSServerName, config.takTLSServerName, sizeof(config.takTLSServerName));
   config.takPort = takPort;
   copyToBuffer(description, config.takDescription, sizeof(config.takDescription));
   if (doc["takCallsign"].is<const char*>()) {
