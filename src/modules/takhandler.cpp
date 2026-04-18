@@ -372,6 +372,16 @@ String sanitizeFsPathValue(const String &rawPath) {
   return path;
 }
 
+bool isFatalTlsError(int errCode) {
+  // Fatal classes where immediate retry is unlikely to succeed.
+  // -9984  X509 verify failed (CA/hostname/time/chain issue)
+  // -9186  ASN1 tag/value invalid (malformed cert/key input)
+  // -28928 SSL bad input parameters
+  // -32512 SSL alloc failed: retrying immediately usually worsens pressure
+  return (errCode == -9984 || errCode == -9186 || errCode == -28928 ||
+          errCode == -32512);
+}
+
 String xmlEscape(const String &raw) {
   String text = raw;
   text.replace("&", "&amp;");
@@ -459,6 +469,18 @@ void normalizeTakConfig() {
   copyToBuffer(sanitizeFsPathValue(String(config.takClientKeyPath)), config.takClientKeyPath, sizeof(config.takClientKeyPath));
   copyToBuffer(sanitizeFsPathValue(String(config.takClientP12Path)), config.takClientP12Path, sizeof(config.takClientP12Path));
   copyToBuffer(sanitizeFsPathValue(String(config.takTruststoreP12Path)), config.takTruststoreP12Path, sizeof(config.takTruststoreP12Path));
+
+  // Sanitize reconnect values loaded from JSON at boot to avoid aggressive retry storms.
+  if (config.takReconnectInitialDelayMs == 0) {
+    config.takReconnectInitialDelayMs = 5000;
+  }
+  if (config.takReconnectMaxDelayMs < config.takReconnectInitialDelayMs) {
+    config.takReconnectMaxDelayMs = config.takReconnectInitialDelayMs;
+  }
+  if (config.takReconnectBackoffMultiplier <= 1.0f) {
+    config.takReconnectBackoffMultiplier = 1.5f;
+  }
+
   buildTakUidIfEmpty();
   refreshTakFileCache();
 }
@@ -1026,7 +1048,10 @@ bool connectTAK(String &message) {
         settimeofday(&tv, nullptr);
         Serial.printf("TAK: set system time from GPS: %s", ctime(&epochUtc));
       } else {
-        Serial.println("TAK: WARNING - system clock not synced and no GPS fix; cert verification will likely fail");
+        message = "TAK TLS blocked: system clock not synced and no GPS time available";
+        takLastMessage = message;
+        takConnected = false;
+        return false;
       }
     }
   }
@@ -1049,26 +1074,48 @@ bool connectTAK(String &message) {
     int lastErrCode = 0;
     char lastErrBuf[192] = {0};
     String attemptLog = "";
+    bool fatalError = false;
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      takSecureClient.stop();
-      connected = takSecureClient.connect(serverIp, config.takPort, tlsServerName, caPem, clientCert, clientKey);
+      const char *sniForAttempt = tlsServerName;
+
+      // Do NOT call stop() here before connect() – configureTakClient() already stopped the
+      // client, and after each failed connect() the WiFiClientSecure has internally freed its
+      // ssl_client.  Calling stop() a second time before the next connect() invokes
+      // WiFiClient::stop() on an already-closed socket, which corrupts the heap allocator's
+      // block-list sentinel (producing "Bad head ... Expected 0xabba1234").
+      connected = takSecureClient.connect(serverIp, config.takPort, sniForAttempt, caPem, clientCert, clientKey);
       if (connected) {
         if (attempt > 1) {
-          message = "TAK connection established on attempt " + String(attempt);
+          message = "TAK connection established on attempt " + String(attempt) +
+                    " (SNI=" + String(sniForAttempt) + ")";
           takLastMessage = message;
         }
         break;
       }
 
+      // Capture the error before stop() potentially clears it.
       memset(lastErrBuf, 0, sizeof(lastErrBuf));
       lastErrCode = takSecureClient.lastError(lastErrBuf, sizeof(lastErrBuf));
       if (attemptLog.length() > 0) {
         attemptLog += "; ";
       }
-      attemptLog += "#" + String(attempt) + "=" + String(lastErrCode);
+      attemptLog += "#" + String(attempt) + "=" + String(lastErrCode) +
+                    "[sni=" + String(sniForAttempt) + "]";
 
-      // Fatal peer alerts are often backend/policy dependent; retry a few times.
+      fatalError = isFatalTlsError(lastErrCode);
+      if (fatalError) {
+        attemptLog += "(fatal)";
+      }
+
+      // Always clean up the failed TLS context before deciding whether to retry.
+      takSecureClient.stop();
+
+      if (fatalError) {
+        break;
+      }
+
+      // Clean up after the failed attempt, then wait before retrying.
       if (attempt < maxAttempts) {
         delay(250);
       }

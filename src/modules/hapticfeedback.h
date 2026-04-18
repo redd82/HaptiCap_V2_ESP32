@@ -6,7 +6,8 @@
 #include "../structs/config.h"
 #include "../structs/debugsettings.h"
 
-void HapticFeedbackHeading(float relativeHeading,bool bEnable,bool debug,int distancePOI,CalData caldata,Config config);
-
+void HapticFeedbackHeading(float relativeHeading, bool bEnable, bool debug, int distancePOI);
+void HapticFeedbackStop();
+void HapticFeedbackTick();  // Call every loop() iteration — drives the non-blocking pulse state machine.
 
 #endif // HAPTICFEEDBACK_H

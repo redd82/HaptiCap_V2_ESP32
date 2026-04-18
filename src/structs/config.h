@@ -28,6 +28,7 @@ struct Config {
   int touchThreshold = 50;
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = true;
+  uint8_t guidanceOutputMode = 0;              // 0 = vibrator PWM, 1 = RGB LED PWM
   int selectedMap = 1;
   bool takEnabled = false;
   bool takSSL = true;

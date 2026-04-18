@@ -14,6 +14,7 @@
     "sleepMins": "5",
     "touchThreshold": "50",
     "touchEnabled": true,
+    "guidanceOutputMode": 0,
     "maxDistance": "500",
     "maxDelay": "1000",
     "timeZoneOffset": "1",

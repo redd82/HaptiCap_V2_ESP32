@@ -237,6 +237,7 @@ void saveConfigDataToJSON(){
   configDoc["sleepMins"] = config.sleepMins;
   configDoc["touchThreshold"] = config.touchThreshold;
   configDoc["touchEnabled"] = config.touchEnabled;
+  configDoc["guidanceOutputMode"] = config.guidanceOutputMode;
   configDoc["maxDistance"] = config.maxDistance;
   configDoc["maxDelay"] = config.maxDelay;
   configDoc["timeZoneOffset"] = config.timeZoneOffset;
@@ -303,6 +304,7 @@ void putJSONConfigDataInMemory(){
   config.sleepMins = configDoc["sleepMins"] | config.sleepMins;
   config.touchThreshold = configDoc["touchThreshold"] | config.touchThreshold;
   config.touchEnabled = configDoc["touchEnabled"] | config.touchEnabled;
+  config.guidanceOutputMode = configDoc["guidanceOutputMode"] | config.guidanceOutputMode;
   config.maxDistance = configDoc["maxDistance"] | config.maxDistance;
   config.maxDelay = configDoc["maxDelay"] | config.maxDelay;
   config.timeZoneOffset = configDoc["timeZoneOffset"] | config.timeZoneOffset;
