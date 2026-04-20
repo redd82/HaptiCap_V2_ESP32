@@ -61,7 +61,6 @@ String printFreeSpace(){
 
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     String filesListing = "";
-    String dirName = dirName.c_str();
     File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
@@ -78,7 +77,7 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
             filesListing = filesListing + "\n" + "  DIR : ";
             filesListing = filesListing + "\n" + file.name();
             if(levels){
-                listDir(fs, file.path(), levels -1);
+          filesListing += listDir(fs, file.path(), levels - 1);
             }
         } else {
             filesListing = filesListing + "\n" + "  FILE: " + file.name();
@@ -87,11 +86,7 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         file = root.openNextFile();
     }
 
-    if(levels == 0){
-      return filesListing;
-    }else{
-      return filesListing;
-    }
+    return filesListing;
 }
 
 void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels){
@@ -237,6 +232,7 @@ void saveConfigDataToJSON(){
   configDoc["sleepMins"] = config.sleepMins;
   configDoc["touchThreshold"] = config.touchThreshold;
   configDoc["touchEnabled"] = config.touchEnabled;
+  configDoc["guidanceOutputMode"] = config.guidanceOutputMode;
   configDoc["maxDistance"] = config.maxDistance;
   configDoc["maxDelay"] = config.maxDelay;
   configDoc["timeZoneOffset"] = config.timeZoneOffset;
@@ -252,6 +248,8 @@ void saveConfigDataToJSON(){
   configDoc["takPort"] = config.takPort;
   configDoc["takCallsign"] = config.takCallsign;
   configDoc["takUID"] = config.takUID;
+  configDoc["takTypePreset"] = config.takTypePreset;
+  configDoc["takType"] = config.takType;
   configDoc["takDescription"] = config.takDescription;
   configDoc["takCACertPath"] = config.takCACertPath;
   configDoc["takClientCertPath"] = config.takClientCertPath;
@@ -303,6 +301,7 @@ void putJSONConfigDataInMemory(){
   config.sleepMins = configDoc["sleepMins"] | config.sleepMins;
   config.touchThreshold = configDoc["touchThreshold"] | config.touchThreshold;
   config.touchEnabled = configDoc["touchEnabled"] | config.touchEnabled;
+  config.guidanceOutputMode = configDoc["guidanceOutputMode"] | config.guidanceOutputMode;
   config.maxDistance = configDoc["maxDistance"] | config.maxDistance;
   config.maxDelay = configDoc["maxDelay"] | config.maxDelay;
   config.timeZoneOffset = configDoc["timeZoneOffset"] | config.timeZoneOffset;
@@ -318,6 +317,8 @@ void putJSONConfigDataInMemory(){
   config.takPort = configDoc["takPort"] | config.takPort;
   String(configDoc["takCallsign"] | config.takCallsign).toCharArray(config.takCallsign, sizeof(config.takCallsign));
   String(configDoc["takUID"] | config.takUID).toCharArray(config.takUID, sizeof(config.takUID));
+  String(configDoc["takTypePreset"] | config.takTypePreset).toCharArray(config.takTypePreset, sizeof(config.takTypePreset));
+  String(configDoc["takType"] | config.takType).toCharArray(config.takType, sizeof(config.takType));
   String(configDoc["takDescription"] | config.takDescription).toCharArray(config.takDescription, sizeof(config.takDescription));
   String(configDoc["takCACertPath"] | config.takCACertPath).toCharArray(config.takCACertPath, sizeof(config.takCACertPath));
   String(configDoc["takClientCertPath"] | config.takClientCertPath).toCharArray(config.takClientCertPath, sizeof(config.takClientCertPath));

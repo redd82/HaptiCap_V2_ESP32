@@ -434,7 +434,12 @@ void webServerSetup(){
     {
       //String fileListing = listDir(LittleFS, "/", 2);
       String fileListing = listDir(LittleFS, mapsDir.c_str(), 0);
-      request->send(200, "application/json", "{ \"listing\": " + fileListing + "}");
+      JsonDocument responseDoc;
+      responseDoc["listing"] = fileListing;
+
+      String responseBody;
+      serializeJson(responseDoc, responseBody);
+      request->send(200, "application/json", responseBody);
     }
   );
 
@@ -541,8 +546,8 @@ void webServerSetup(){
   webServer.on("/tak/connect", HTTP_POST, [](AsyncWebServerRequest *request)
     {
       String message = "TAK connect requested";
-      bool ok = connectTAK(message);
-      int statusCode = ok ? 200 : 400;
+      bool ok = requestTAKConnect(message);
+      int statusCode = ok ? 202 : 400;
       request->send(statusCode, "application/json", "{ \"message\": \"" + message + "\" }");
     }
   );

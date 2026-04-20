@@ -1,9 +1,9 @@
 {
-    "compassCalibrated": false,
+    "compassCalibrated": true,
     "compassOffset": "0.00",
-    "magOffsetX": "0",
-    "magOffsetY": "0",
-    "magOffsetZ": "0",
+    "magOffsetX": "4.79",
+    "magOffsetY": "-2.10",
+    "magOffsetZ": "-36.28",
     "magRadius": "0",
     "gyroOffsetX": "0",
     "gyroOffsetY": "0",

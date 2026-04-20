@@ -28,6 +28,7 @@ struct Config {
   int touchThreshold = 50;
   int timeZoneOffset = 1;                      // +1 hour
   bool touchEnabled = true;
+  uint8_t guidanceOutputMode = 0;              // 0 = vibrator PWM, 1 = RGB LED PWM
   int selectedMap = 1;
   bool takEnabled = false;
   bool takSSL = true;
@@ -40,6 +41,8 @@ struct Config {
   uint16_t takPort = 8089;
   char takCallsign[32] = "HaptiCap";
   char takUID[48] = "";
+  char takTypePreset[24] = "atak_phone";
+  char takType[24] = "a-f-G-U-C";
   char takDescription[96] = "";
   char takCACertPath[64] = "/certs/tak_ca.crt";
   char takClientCertPath[64] = "/certs/tak_client.crt";

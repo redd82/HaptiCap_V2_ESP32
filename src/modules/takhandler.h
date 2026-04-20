@@ -11,6 +11,7 @@ void getTAKStatus(JsonDocument &doc);
 void getTAKCertDiagnostics(JsonDocument &doc);
 bool updateTAKConfigFromJson(const JsonDocument &doc, String &message);
 bool importTAKPackageData(const JsonDocument &doc, String &message);
+bool requestTAKConnect(String &message);
 bool connectTAK(String &message);
 void disconnectTAK(const String &reason = String());
 void serviceTAK(const SensorData &sensorData);
