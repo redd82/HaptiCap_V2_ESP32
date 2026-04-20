@@ -15,6 +15,8 @@
 #include "modules/filehandler.h"
 #include "modules/webserverhandler.h"
 #include "modules/hapticfeedback.h"
+#include "modules/ledguidance.h"
+#include "modules/takhandler.h"
 #include "modules/wifihandler.h"
 #include "modules/compass.h"
 #include "modules/gps.h"
@@ -289,6 +291,15 @@ void updateSensorData(){
     sensorData.relheading = CalcRelHeading(compassheading, sensorData.wayPointBearing);
     temp = TinyGPSPlus::cardinal(sensorData.wayPointBearing); 
     temp.toCharArray(sensorData.wayPointCardinal,8);
+
+    bool guidanceEnabled = config.touchEnabled;
+    if (config.guidanceOutputMode == 1) {
+      LedGuidanceHeading(sensorData.relheading, guidanceEnabled, debugSettings.debugHaptic, sensorData.wayPointDistance);
+    } else {
+      LedGuidanceStop();
+      HapticFeedbackHeading(sensorData.relheading, guidanceEnabled, debugSettings.debugHaptic, sensorData.wayPointDistance);
+    }
+
     sensorData.nrOfSatellites = gps.satellites.value();
     getGPSTimeMins();
     saveSensorDataToJSON();
@@ -416,6 +427,7 @@ void setup(){
 
   littleFSSetup();
   loadConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str(), config);
+  setupTAK();
   loadDebugSettings(LittleFS, (jsonDir + fileDebugJSON).c_str(), debugSettings);
   wifiSetup();
   touchPadSetup();
@@ -434,6 +446,14 @@ void setup(){
   Serial.println("OTA Enabled!");
   webServerSetup();
   haptiCapReady();
+  if (config.takEnabled) {
+    String takBootMessage;
+    if (connectTAK(takBootMessage)) {
+      Serial.println(String("TAK auto-connect on boot: ") + takBootMessage);
+    } else {
+      Serial.println(String("TAK auto-connect on boot failed: ") + takBootMessage);
+    }
+  }
 }
 
 void loop(){
@@ -494,4 +514,7 @@ void loop(){
 
     //ledTesting();
   }
+
+  HapticFeedbackTick();
+  serviceTAK(sensorData);
 }

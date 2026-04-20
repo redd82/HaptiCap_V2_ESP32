@@ -1,5 +1,6 @@
 #include "webserverhandler.h"
 #include "compass.h"
+#include <time.h>
 
 extern AsyncWebServer webServer;
 extern TinyGPSPlus gps;
@@ -246,8 +247,40 @@ void webServerSetup(){
               JsonObject obj = configDoc.as<JsonObject>();
               putJSONConfigDataInMemory();
               saveConfiguration(LittleFS, (jsonDir + fileConfigJSON).c_str());
+              // Re-apply NTP timezone offset immediately so clock updates without restart.
+              configTime(config.timeZoneOffset * 3600L, 0, "pool.ntp.org", "time.nist.gov");
           }
           request->send(200, "application/json", "{ \"status\": 0 }");
+      } else if ((request->url() == "/tak/config") && (request->method() == HTTP_POST))
+      {
+          JsonDocument takConfigDoc;
+          if (DeserializationError::Ok != deserializeJson(takConfigDoc, body)) {
+            request->send(400, "application/json", "{ \"message\": \"Invalid TAK config payload\" }");
+            return;
+          }
+
+          String message = "TAK settings saved";
+          if (!updateTAKConfigFromJson(takConfigDoc, message)) {
+            request->send(400, "application/json", "{ \"message\": \"" + message + "\" }");
+            return;
+          }
+
+          request->send(200, "application/json", "{ \"message\": \"" + message + "\" }");
+      } else if ((request->url() == "/tak/import-package-data") && (request->method() == HTTP_POST))
+      {
+          JsonDocument importDoc;
+          if (DeserializationError::Ok != deserializeJson(importDoc, body)) {
+            request->send(400, "application/json", "{ \"message\": \"Invalid TAK package payload\" }");
+            return;
+          }
+
+          String message = "TAK package data imported";
+          if (!importTAKPackageData(importDoc, message)) {
+            request->send(400, "application/json", "{ \"message\": \"" + message + "\" }");
+            return;
+          }
+
+          request->send(200, "application/json", "{ \"message\": \"" + message + "\" }");
       } else if ((request->url() == "/settings/calibration_form") && (request->method() == HTTP_POST))
       {
           if (DeserializationError::Ok == deserializeJson(calDataDoc, body))
@@ -364,6 +397,8 @@ void webServerSetup(){
 
   // Register JSON POST endpoints with explicit body callbacks so requests are handled.
   webServer.on("/settings/settings_form", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/tak/config", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
+  webServer.on("/tak/import-package-data", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
   webServer.on("/settings/calibration_form", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
   webServer.on("/settings/debug_form", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
   webServer.on("/navigation/register-map", HTTP_POST, [](AsyncWebServerRequest *request) {}, nullptr, handleJsonBody);
@@ -399,7 +434,12 @@ void webServerSetup(){
     {
       //String fileListing = listDir(LittleFS, "/", 2);
       String fileListing = listDir(LittleFS, mapsDir.c_str(), 0);
-      request->send(200, "application/json", "{ \"listing\": " + fileListing + "}");
+      JsonDocument responseDoc;
+      responseDoc["listing"] = fileListing;
+
+      String responseBody;
+      serializeJson(responseDoc, responseBody);
+      request->send(200, "application/json", responseBody);
     }
   );
 
@@ -473,12 +513,73 @@ void webServerSetup(){
     }
   );
 
+  webServer.on("/tak/config", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      JsonDocument takConfigDoc;
+      getTAKConfig(takConfigDoc);
+      String output;
+      serializeJson(takConfigDoc, output);
+      request->send(200, "application/json", output);
+    }
+  );
+
+  webServer.on("/tak/status", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      JsonDocument takStatusDoc;
+      getTAKStatus(takStatusDoc);
+      String output;
+      serializeJson(takStatusDoc, output);
+      request->send(200, "application/json", output);
+    }
+  );
+
+  webServer.on("/tak/cert-diagnostics", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      JsonDocument takCertDiagDoc;
+      getTAKCertDiagnostics(takCertDiagDoc);
+      String output;
+      serializeJson(takCertDiagDoc, output);
+      request->send(200, "application/json", output);
+    }
+  );
+
+  webServer.on("/tak/connect", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      String message = "TAK connect requested";
+      bool ok = requestTAKConnect(message);
+      int statusCode = ok ? 202 : 400;
+      request->send(statusCode, "application/json", "{ \"message\": \"" + message + "\" }");
+    }
+  );
+
+  webServer.on("/tak/disconnect", HTTP_POST, [](AsyncWebServerRequest *request)
+    {
+      disconnectTAK();
+      request->send(200, "application/json", "{ \"message\": \"TAK disconnected\" }");
+    }
+  );
+
   webServer.on("/setHome", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       sensorData.homeBaseLat = gps.location.lat();
       sensorData.homeBaseLon = gps.location.lng();
       saveSensorData(LittleFS, (jsonDir + fileSensorDataJSON).c_str(), sensorData);
       request->send(200, "application/json", "{ \"status\": 0 }");
+    }
+  );
+
+  webServer.on("/setNorth", HTTP_GET, [](AsyncWebServerRequest *request)
+    {
+      float newOffset = setCompassNorth();
+      saveCalibrationDataToJSON();
+      saveCalibrationData(LittleFS, (jsonDir + fileCalDataJSON).c_str(), caldata);
+
+      JsonDocument responseDoc;
+      responseDoc["status"] = 0;
+      responseDoc["compassOffset"] = newOffset;
+      String responseBody;
+      serializeJson(responseDoc, responseBody);
+      request->send(200, "application/json", responseBody);
     }
   );
 

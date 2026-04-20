@@ -61,7 +61,6 @@ String printFreeSpace(){
 
 String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     String filesListing = "";
-    String dirName = dirName.c_str();
     File root = fs.open(dirname);
     if(!root){
         Serial.println("- failed to open directory");
@@ -78,7 +77,7 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
             filesListing = filesListing + "\n" + "  DIR : ";
             filesListing = filesListing + "\n" + file.name();
             if(levels){
-                listDir(fs, file.path(), levels -1);
+          filesListing += listDir(fs, file.path(), levels - 1);
             }
         } else {
             filesListing = filesListing + "\n" + "  FILE: " + file.name();
@@ -87,11 +86,7 @@ String listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         file = root.openNextFile();
     }
 
-    if(levels == 0){
-      return filesListing;
-    }else{
-      return filesListing;
-    }
+    return filesListing;
 }
 
 void getJSandCSSFiles(fs::FS &fs, const char * dirname, uint8_t levels){
@@ -182,6 +177,28 @@ String readFile(fs::FS &fs, const char * path){
   return fileContent;
 }
 
+bool writeStringToFile(fs::FS &fs, const char * path, const String &content) {
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.printf("Failed to open file for writing: %s\n", path);
+    return false;
+  }
+  size_t written = file.print(content);
+  file.close();
+  return written == content.length();
+}
+
+bool writeBytesToFile(fs::FS &fs, const char * path, const uint8_t *data, size_t len) {
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.printf("Failed to open file for binary write: %s\n", path);
+    return false;
+  }
+  size_t written = file.write(data, len);
+  file.close();
+  return written == len;
+}
+
 void renameFile(fs::FS &fs, const char * path1, const char * path2){
     Serial.printf("Renaming file %s to %s\r\n", path1, path2);
     if (fs.rename(path1, path2)) {
@@ -207,18 +224,44 @@ void saveConfigDataToJSON(){
   configDoc["deviceName"] = config.deviceName;
   configDoc["apPasswd"] = config.apPasswd;
   configDoc["httpPort"] = config.http_port;
-  configDoc["gpsPollSec"] = String(config.gpsPollSec);
-  configDoc["targetReached"] = String(config.targetReached);  
-  configDoc["compPollMs"] = String(config.compPollMs);
-  configDoc["compOffset"] = String(config.compOffset);
-  configDoc["declAngleRad"] = String(config.declAngleRad,14);
-  configDoc["sleepMins"] = String(config.sleepMins);
-  configDoc["touchThreshold"] = String(config.touchThreshold);
+  configDoc["gpsPollSec"] = config.gpsPollSec;
+  configDoc["targetReached"] = config.targetReached;
+  configDoc["compPollMs"] = config.compPollMs;
+  configDoc["compOffset"] = config.compOffset;
+  configDoc["declAngleRad"] = config.declAngleRad;
+  configDoc["sleepMins"] = config.sleepMins;
+  configDoc["touchThreshold"] = config.touchThreshold;
   configDoc["touchEnabled"] = config.touchEnabled;
-  configDoc["maxDistance"] = String(config.maxDistance);
-  configDoc["maxDelay"] = String(config.maxDelay);
-  configDoc["timeZoneOffset"] = String(config.timeZoneOffset);
-  configDoc["selectedMap"] = String(config.selectedMap);
+  configDoc["guidanceOutputMode"] = config.guidanceOutputMode;
+  configDoc["maxDistance"] = config.maxDistance;
+  configDoc["maxDelay"] = config.maxDelay;
+  configDoc["timeZoneOffset"] = config.timeZoneOffset;
+  configDoc["selectedMap"] = config.selectedMap;
+  configDoc["takEnabled"] = config.takEnabled;
+  configDoc["takSSL"] = config.takSSL;
+  configDoc["takVerifyCert"] = config.takVerifyCert;
+  configDoc["takUseClientCert"] = config.takUseClientCert;
+  configDoc["takConfigured"] = config.takConfigured;
+  configDoc["takPackageImported"] = config.takPackageImported;
+  configDoc["takServer"] = config.takServer;
+  configDoc["takTLSServerName"] = config.takTLSServerName;
+  configDoc["takPort"] = config.takPort;
+  configDoc["takCallsign"] = config.takCallsign;
+  configDoc["takUID"] = config.takUID;
+  configDoc["takTypePreset"] = config.takTypePreset;
+  configDoc["takType"] = config.takType;
+  configDoc["takDescription"] = config.takDescription;
+  configDoc["takCACertPath"] = config.takCACertPath;
+  configDoc["takClientCertPath"] = config.takClientCertPath;
+  configDoc["takClientKeyPath"] = config.takClientKeyPath;
+  configDoc["takClientP12Path"] = config.takClientP12Path;
+  configDoc["takTruststoreP12Path"] = config.takTruststoreP12Path;
+  configDoc["takReconnectEnabled"] = config.takReconnectEnabled;
+  configDoc["takReconnectOnWifiReconnect"] = config.takReconnectOnWifiReconnect;
+  configDoc["takReconnectInitialDelayMs"] = config.takReconnectInitialDelayMs;
+  configDoc["takReconnectMaxDelayMs"] = config.takReconnectMaxDelayMs;
+  configDoc["takReconnectBackoffMultiplier"] = config.takReconnectBackoffMultiplier;
+  configDoc["takReconnectMaxDurationMs"] = config.takReconnectMaxDurationMs;
 }
 
 // Saves the configuration to a file
@@ -239,29 +282,55 @@ void saveConfiguration(fs::FS &fs, const char * path) {
 }
 
 void putJSONConfigDataInMemory(){
-  config.asAP = configDoc["asAP"].as<bool>();
-  String tempClientSSID = configDoc["clientSSID"];
+  config.asAP = configDoc["asAP"] | config.asAP;
+  String tempClientSSID = configDoc["clientSSID"] | config.clientSSID;
   tempClientSSID.toCharArray(config.clientSSID, 25);
-  String tempClientPasswd = configDoc["clientPasswd"];
+  String tempClientPasswd = configDoc["clientPasswd"] | config.clientPasswd;
   tempClientPasswd.toCharArray(config.clientPasswd, 16);
-  config.connectionTimeOut = configDoc["connectionTimeOut"].as<int>();
-  String tempDeviceName = configDoc["deviceName"];
+  config.connectionTimeOut = configDoc["connectionTimeOut"] | config.connectionTimeOut;
+  String tempDeviceName = configDoc["deviceName"] | config.deviceName;
   tempDeviceName.toCharArray(config.deviceName, 16);
-  String tempApPasswd = configDoc["apPasswd"];
+  String tempApPasswd = configDoc["apPasswd"] | config.apPasswd;
   tempApPasswd.toCharArray(config.apPasswd, 16);
-  config.http_port = configDoc["httpPort"].as<int>();
-  config.gpsPollSec = configDoc["gpsPollSec"].as<float>();
-  config.targetReached = configDoc["targetReached"].as<int>();
-  config.compPollMs = configDoc["compPollMs"].as<float>();
-  config.compOffset = configDoc["compOffset"].as<float>();
-  config.declAngleRad = configDoc["declAngleRad"].as<double>();
-  config.sleepMins = configDoc["sleepMins"].as<int>();
-  config.touchThreshold = configDoc["touchThreshold"].as<int>();  
-  config.touchEnabled = configDoc["touchEnabled"].as<bool>();  
-  config.maxDistance = configDoc["maxDistance"].as<int>();
-  config.maxDelay = configDoc["maxDelay"].as<int>();
-  config.timeZoneOffset = configDoc["timeZoneOffset"].as<int>();
-  config.selectedMap = configDoc["selectedMap"].as<int>();
+  config.http_port = configDoc["httpPort"] | config.http_port;
+  config.gpsPollSec = configDoc["gpsPollSec"] | config.gpsPollSec;
+  config.targetReached = configDoc["targetReached"] | config.targetReached;
+  config.compPollMs = configDoc["compPollMs"] | config.compPollMs;
+  config.compOffset = configDoc["compOffset"] | config.compOffset;
+  config.declAngleRad = configDoc["declAngleRad"] | config.declAngleRad;
+  config.sleepMins = configDoc["sleepMins"] | config.sleepMins;
+  config.touchThreshold = configDoc["touchThreshold"] | config.touchThreshold;
+  config.touchEnabled = configDoc["touchEnabled"] | config.touchEnabled;
+  config.guidanceOutputMode = configDoc["guidanceOutputMode"] | config.guidanceOutputMode;
+  config.maxDistance = configDoc["maxDistance"] | config.maxDistance;
+  config.maxDelay = configDoc["maxDelay"] | config.maxDelay;
+  config.timeZoneOffset = configDoc["timeZoneOffset"] | config.timeZoneOffset;
+  config.selectedMap = configDoc["selectedMap"] | config.selectedMap;
+  config.takEnabled = configDoc["takEnabled"] | config.takEnabled;
+  config.takSSL = configDoc["takSSL"] | config.takSSL;
+  config.takVerifyCert = configDoc["takVerifyCert"] | config.takVerifyCert;
+  config.takUseClientCert = configDoc["takUseClientCert"] | config.takUseClientCert;
+  config.takConfigured = configDoc["takConfigured"] | config.takConfigured;
+  config.takPackageImported = configDoc["takPackageImported"] | config.takPackageImported;
+  String(configDoc["takServer"] | config.takServer).toCharArray(config.takServer, sizeof(config.takServer));
+  String(configDoc["takTLSServerName"] | config.takTLSServerName).toCharArray(config.takTLSServerName, sizeof(config.takTLSServerName));
+  config.takPort = configDoc["takPort"] | config.takPort;
+  String(configDoc["takCallsign"] | config.takCallsign).toCharArray(config.takCallsign, sizeof(config.takCallsign));
+  String(configDoc["takUID"] | config.takUID).toCharArray(config.takUID, sizeof(config.takUID));
+  String(configDoc["takTypePreset"] | config.takTypePreset).toCharArray(config.takTypePreset, sizeof(config.takTypePreset));
+  String(configDoc["takType"] | config.takType).toCharArray(config.takType, sizeof(config.takType));
+  String(configDoc["takDescription"] | config.takDescription).toCharArray(config.takDescription, sizeof(config.takDescription));
+  String(configDoc["takCACertPath"] | config.takCACertPath).toCharArray(config.takCACertPath, sizeof(config.takCACertPath));
+  String(configDoc["takClientCertPath"] | config.takClientCertPath).toCharArray(config.takClientCertPath, sizeof(config.takClientCertPath));
+  String(configDoc["takClientKeyPath"] | config.takClientKeyPath).toCharArray(config.takClientKeyPath, sizeof(config.takClientKeyPath));
+  String(configDoc["takClientP12Path"] | config.takClientP12Path).toCharArray(config.takClientP12Path, sizeof(config.takClientP12Path));
+  String(configDoc["takTruststoreP12Path"] | config.takTruststoreP12Path).toCharArray(config.takTruststoreP12Path, sizeof(config.takTruststoreP12Path));
+  config.takReconnectEnabled = configDoc["takReconnectEnabled"] | config.takReconnectEnabled;
+  config.takReconnectOnWifiReconnect = configDoc["takReconnectOnWifiReconnect"] | config.takReconnectOnWifiReconnect;
+  config.takReconnectInitialDelayMs = configDoc["takReconnectInitialDelayMs"] | config.takReconnectInitialDelayMs;
+  config.takReconnectMaxDelayMs = configDoc["takReconnectMaxDelayMs"] | config.takReconnectMaxDelayMs;
+  config.takReconnectBackoffMultiplier = configDoc["takReconnectBackoffMultiplier"] | config.takReconnectBackoffMultiplier;
+  config.takReconnectMaxDurationMs = configDoc["takReconnectMaxDurationMs"] | config.takReconnectMaxDurationMs;
 }
 
 void IRAM_ATTR loadConfiguration(fs::FS &fs, const char *path, Config config) {

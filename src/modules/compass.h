@@ -20,4 +20,5 @@ void debugGyroAccel();
 void plotterDataGyroAccelMag();
 bool calibrateCompass();
 float readCompass();
+float setCompassNorth();
 #endif

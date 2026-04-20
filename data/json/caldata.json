@@ -1,15 +1,15 @@
 {
-    "compassCalibrated": false,
+    "compassCalibrated": true,
     "compassOffset": "0.00",
-    "magOffsetX": "-211",
-    "magOffsetY": "-661",
-    "magOffsetZ": "-506",
+    "magOffsetX": "4.79",
+    "magOffsetY": "-2.10",
+    "magOffsetZ": "-36.28",
     "magRadius": "0",
-    "gyroOffsetX": "-1",
+    "gyroOffsetX": "0",
     "gyroOffsetY": "0",
-    "gyroOffsetZ": "-1",
-    "accelOffsetX": "25",
-    "accelOffsetY": "34",
-    "accelOffsetZ": "-8",
-    "accelRadius": "1000"
+    "gyroOffsetZ": "0",
+    "accelOffsetX": "0",
+    "accelOffsetY": "0",
+    "accelOffsetZ": "0",
+    "accelRadius": "0"
   }

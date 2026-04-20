@@ -9,6 +9,7 @@
 #include <DNSServer.h>
 #include "filehandler.h"
 #include "gps.h"
+#include "takhandler.h"
 
 void webServerSetup();
 

@@ -26,18 +26,18 @@ const int pwmled4 = 4;
 const int pwmled5 = 5;
 const int pwmled6 = 6;
 const int pwmled7 = 7;
+const int pwmhapticfront = 9;
+const int pwmhapticright = 10;
+const int pwmhapticrear = 11;
+const int pwmhapticleft = 12;
 int intensityOffsetGreen = 20;
 
 void PWMSetup(){
 //PWM setup
-  // ledcSetup(pwmhapticfront, hapticfreq, resolution);
-  // ledcSetup(pwmhapticright, hapticfreq, resolution);
-  // ledcSetup(pwmhapticrear, hapticfreq, resolution);
-  // ledcSetup(pwmhapticleft, hapticfreq, resolution);
-  // ledcAttachPin(hapticfront, pwmhapticfront);
-  // ledcAttachPin(hapticright, pwmhapticright);
-  // ledcAttachPin(hapticrear, pwmhapticrear);
-  // ledcAttachPin(hapticleft, pwmhapticleft);
+  ledcSetup(pwmhapticfront, hapticfreq, resolution);
+  ledcSetup(pwmhapticright, hapticfreq, resolution);
+  ledcSetup(pwmhapticrear, hapticfreq, resolution);
+  ledcSetup(pwmhapticleft, hapticfreq, resolution);
 
   ledcSetup(pwmledcommon, hapticfreq, resolution);
   ledcSetup(pwmled0, hapticfreq, resolution);
