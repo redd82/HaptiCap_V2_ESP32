@@ -248,6 +248,8 @@ void saveConfigDataToJSON(){
   configDoc["takPort"] = config.takPort;
   configDoc["takCallsign"] = config.takCallsign;
   configDoc["takUID"] = config.takUID;
+  configDoc["takTypePreset"] = config.takTypePreset;
+  configDoc["takType"] = config.takType;
   configDoc["takDescription"] = config.takDescription;
   configDoc["takCACertPath"] = config.takCACertPath;
   configDoc["takClientCertPath"] = config.takClientCertPath;
@@ -315,6 +317,8 @@ void putJSONConfigDataInMemory(){
   config.takPort = configDoc["takPort"] | config.takPort;
   String(configDoc["takCallsign"] | config.takCallsign).toCharArray(config.takCallsign, sizeof(config.takCallsign));
   String(configDoc["takUID"] | config.takUID).toCharArray(config.takUID, sizeof(config.takUID));
+  String(configDoc["takTypePreset"] | config.takTypePreset).toCharArray(config.takTypePreset, sizeof(config.takTypePreset));
+  String(configDoc["takType"] | config.takType).toCharArray(config.takType, sizeof(config.takType));
   String(configDoc["takDescription"] | config.takDescription).toCharArray(config.takDescription, sizeof(config.takDescription));
   String(configDoc["takCACertPath"] | config.takCACertPath).toCharArray(config.takCACertPath, sizeof(config.takCACertPath));
   String(configDoc["takClientCertPath"] | config.takClientCertPath).toCharArray(config.takClientCertPath, sizeof(config.takClientCertPath));

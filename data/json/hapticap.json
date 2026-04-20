@@ -29,6 +29,8 @@
     "takPort": 8089,
     "takCallsign": "HaptiCap",
     "takUID": "",
+    "takTypePreset": "atak_phone",
+    "takType": "a-f-G-U-C",
     "takDescription": "",
     "takCACertPath": "/certs/tak_ca.crt",
     "takClientCertPath": "/certs/tak_client.crt",

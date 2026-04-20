@@ -376,6 +376,46 @@ String sanitizeFsPathValue(const String &rawPath) {
   return path;
 }
 
+String sanitizeCotTypeValue(const String &rawType) {
+  String typeValue = rawType;
+  typeValue.trim();
+  if (typeValue.length() == 0) {
+    return "a-f-G-U-C";
+  }
+
+  String normalized = "";
+  normalized.reserve(typeValue.length());
+  for (size_t index = 0; index < typeValue.length(); index++) {
+    char ch = typeValue.charAt(index);
+    bool isLower = (ch >= 'a' && ch <= 'z');
+    bool isUpper = (ch >= 'A' && ch <= 'Z');
+    bool isNumber = (ch >= '0' && ch <= '9');
+    if (isLower || isUpper || isNumber || ch == '-') {
+      normalized += ch;
+    }
+  }
+
+  if (normalized.length() == 0) {
+    return "a-f-G-U-C";
+  }
+
+  return normalized;
+}
+
+String sanitizeCotTypePresetValue(const String &rawPreset) {
+  String preset = rawPreset;
+  preset.trim();
+  preset.toLowerCase();
+  if (preset == "atak_phone" ||
+      preset == "team_lead" ||
+      preset == "generic_friendly" ||
+      preset == "unknown_pending") {
+    return preset;
+  }
+
+  return "atak_phone";
+}
+
 bool isFatalTlsError(int errCode) {
   // Fatal classes where immediate retry is unlikely to succeed.
   // -9186  ASN1 tag/value invalid (malformed cert/key input)
@@ -424,10 +464,11 @@ String buildCotEventXml(const SensorData &sensorData) {
   String lat = String(sensorData.ownLat, 7);
   String lon = String(sensorData.ownLon, 7);
   String course = String(sensorData.compassHeading, 1);
+  String cotType = sanitizeCotTypeValue(String(config.takType));
 
   String cot = "";
   cot.reserve(512);
-  cot += "<event version=\"2.0\" uid=\"" + xmlEscape(uid) + "\" type=\"a-f-G-U-C\" how=\"m-g\" time=\"" + nowIso + "\" start=\"" + nowIso + "\" stale=\"" + staleIso + "\">";
+  cot += "<event version=\"2.0\" uid=\"" + xmlEscape(uid) + "\" type=\"" + xmlEscape(cotType) + "\" how=\"m-g\" time=\"" + nowIso + "\" start=\"" + nowIso + "\" stale=\"" + staleIso + "\">";
   cot += "<point lat=\"" + lat + "\" lon=\"" + lon + "\" hae=\"0.0\" ce=\"10.0\" le=\"10.0\"/>";
   cot += "<detail>";
   cot += "<contact callsign=\"" + xmlEscape(callsign) + "\"/>";
@@ -466,6 +507,8 @@ void buildTakUidIfEmpty() {
 void normalizeTakConfig() {
   copyToBuffer(sanitizeHostValue(String(config.takServer)), config.takServer, sizeof(config.takServer));
   copyToBuffer(sanitizeHostValue(String(config.takTLSServerName)), config.takTLSServerName, sizeof(config.takTLSServerName));
+  copyToBuffer(sanitizeCotTypePresetValue(String(config.takTypePreset)), config.takTypePreset, sizeof(config.takTypePreset));
+  copyToBuffer(sanitizeCotTypeValue(String(config.takType)), config.takType, sizeof(config.takType));
   copyToBuffer(sanitizeFsPathValue(String(config.takCACertPath)), config.takCACertPath, sizeof(config.takCACertPath));
   copyToBuffer(sanitizeFsPathValue(String(config.takClientCertPath)), config.takClientCertPath, sizeof(config.takClientCertPath));
   copyToBuffer(sanitizeFsPathValue(String(config.takClientKeyPath)), config.takClientKeyPath, sizeof(config.takClientKeyPath));
@@ -694,6 +737,8 @@ void getTAKConfig(JsonDocument &doc) {
   doc["takPort"] = config.takPort;
   doc["takCallsign"] = config.takCallsign;
   doc["takUID"] = config.takUID;
+  doc["takTypePreset"] = config.takTypePreset;
+  doc["takType"] = config.takType;
   doc["takDescription"] = config.takDescription;
   doc["takCACertPath"] = config.takCACertPath;
   doc["takClientCertPath"] = config.takClientCertPath;
@@ -956,6 +1001,8 @@ bool updateTAKConfigFromJson(const JsonDocument &doc, String &message) {
   copyToBuffer(obj["takTLSServerName"] | String(config.takTLSServerName), config.takTLSServerName, sizeof(config.takTLSServerName));
   copyToBuffer(obj["takCallsign"] | String(config.takCallsign), config.takCallsign, sizeof(config.takCallsign));
   copyToBuffer(obj["takUID"] | String(config.takUID), config.takUID, sizeof(config.takUID));
+  copyToBuffer(sanitizeCotTypePresetValue(obj["takTypePreset"] | String(config.takTypePreset)), config.takTypePreset, sizeof(config.takTypePreset));
+  copyToBuffer(sanitizeCotTypeValue(obj["takType"] | String(config.takType)), config.takType, sizeof(config.takType));
   copyToBuffer(obj["takDescription"] | String(config.takDescription), config.takDescription, sizeof(config.takDescription));
   copyToBuffer(obj["takCACertPath"] | String(config.takCACertPath), config.takCACertPath, sizeof(config.takCACertPath));
   copyToBuffer(obj["takClientCertPath"] | String(config.takClientCertPath), config.takClientCertPath, sizeof(config.takClientCertPath));

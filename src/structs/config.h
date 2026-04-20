@@ -41,6 +41,8 @@ struct Config {
   uint16_t takPort = 8089;
   char takCallsign[32] = "HaptiCap";
   char takUID[48] = "";
+  char takTypePreset[24] = "atak_phone";
+  char takType[24] = "a-f-G-U-C";
   char takDescription[96] = "";
   char takCACertPath[64] = "/certs/tak_ca.crt";
   char takClientCertPath[64] = "/certs/tak_client.crt";
