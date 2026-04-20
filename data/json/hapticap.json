@@ -1,7 +1,7 @@
 {
     "asAP": false,
-    "clientSSID": "Get_out_of_my_laboratory",
-    "clientPasswd": "T0sh7b49",
+    "clientSSID": "",
+    "clientPasswd": "",
     "connectionTimeOut": 120,
     "deviceName": "HaptiCap",
     "apPasswd": "prutser00",
